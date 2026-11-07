@@ -1,6 +1,5 @@
-export const SUBSCRIPTION_PASSWORD_REQUIRED =
-  'PROFILE_SUBSCRIPTION_PASSWORD_REQUIRED'
-export const SUBSCRIPTION_PASSWORD_INCORRECT =
+const SUBSCRIPTION_PASSWORD_REQUIRED = 'PROFILE_SUBSCRIPTION_PASSWORD_REQUIRED'
+const SUBSCRIPTION_PASSWORD_INCORRECT =
   'PROFILE_SUBSCRIPTION_PASSWORD_INCORRECT'
 
 export function subscriptionPasswordFailure(
@@ -34,7 +33,7 @@ export const subscribeSubscriptionPassword = (subscriber: () => void) => {
 
 export const getSubscriptionPasswordRequest = () => queue[0] ?? null
 
-export function requestSubscriptionPassword({
+function requestSubscriptionPassword({
   name,
   incorrect,
 }: {
