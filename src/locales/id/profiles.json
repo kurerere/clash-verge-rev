@@ -109,6 +109,11 @@
     }
   },
   "modals": {
+    "subscriptionPassword": {
+      "title": "Kata sandi langganan diperlukan",
+      "message": "Langganan \"{{name}}\" dienkripsi. Masukkan kata sandinya.",
+      "incorrect": "Kata sandi salah, silakan coba lagi"
+    },
     "profileForm": {
       "title": {
         "create": "Buat Profil",
@@ -119,6 +124,8 @@
         "description": "Deskripsi",
         "subscriptionUrl": "URL Langganan",
         "userAgent": "User Agent",
+        "subscriptionPassword": "Kata sandi langganan",
+        "subscriptionPasswordHint": "Hanya untuk langganan terenkripsi",
         "httpTimeout": "HTTP Request Timeout",
         "updateInterval": "Interval Pembaruan",
         "useSystemProxy": "Gunakan Proksi Sistem",

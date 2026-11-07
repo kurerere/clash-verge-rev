@@ -109,6 +109,11 @@
     }
   },
   "modals": {
+    "subscriptionPassword": {
+      "title": "Язылу серсүзе кирәк",
+      "message": "«{{name}}» язылуы шифрланган. Аның серсүзен кертегез.",
+      "incorrect": "Серсүз дөрес түгел, кабатлап карагыз"
+    },
     "profileForm": {
       "title": {
         "create": "Профиль булдыру",
@@ -119,6 +124,8 @@
         "description": "Тасвирламалар",
         "subscriptionUrl": "Подписка URL-ы",
         "userAgent": "Кулланучы агенты",
+        "subscriptionPassword": "Язылу серсүзе",
+        "subscriptionPasswordHint": "Шифрланган язылулар өчен генә",
         "httpTimeout": "HTTP Request Timeout",
         "updateInterval": "Яңарту интервалы",
         "useSystemProxy": "Системалы проксины кулланып яңарту",

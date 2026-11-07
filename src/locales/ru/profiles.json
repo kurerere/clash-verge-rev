@@ -109,6 +109,11 @@
     }
   },
   "modals": {
+    "subscriptionPassword": {
+      "title": "Требуется пароль подписки",
+      "message": "Подписка «{{name}}» зашифрована. Введите её пароль.",
+      "incorrect": "Неверный пароль, попробуйте ещё раз"
+    },
     "profileForm": {
       "title": {
         "create": "Создать профиль",
@@ -119,6 +124,8 @@
         "description": "Описание",
         "subscriptionUrl": "URL подписки",
         "userAgent": "User Agent",
+        "subscriptionPassword": "Пароль подписки",
+        "subscriptionPasswordHint": "Только для зашифрованных подписок",
         "httpTimeout": "Тайм-аут HTTP-запроса",
         "updateInterval": "Интервал обновления",
         "useSystemProxy": "Использовать системный прокси для обновления",

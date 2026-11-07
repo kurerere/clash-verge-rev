@@ -109,6 +109,11 @@
     }
   },
   "modals": {
+    "subscriptionPassword": {
+      "title": "Senha da assinatura necessária",
+      "message": "A assinatura \"{{name}}\" está criptografada. Digite a senha.",
+      "incorrect": "Senha incorreta, tente novamente"
+    },
     "profileForm": {
       "title": {
         "create": "Criar perfil",
@@ -119,6 +124,8 @@
         "description": "Descrição",
         "subscriptionUrl": "URL da assinatura",
         "userAgent": "User Agent",
+        "subscriptionPassword": "Senha da assinatura",
+        "subscriptionPasswordHint": "Somente para assinaturas criptografadas",
         "httpTimeout": "Tempo limite HTTP",
         "updateInterval": "Intervalo de atualização",
         "useSystemProxy": "Usar proxy do sistema",

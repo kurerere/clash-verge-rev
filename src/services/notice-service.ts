@@ -76,6 +76,10 @@ const CODED_ERROR_TRANSLATION_KEYS: Readonly<Record<string, TranslationKey>> = {
   PROFILE_READ_FAILED: 'profiles.page.feedback.errors.readFailed',
   PROFILE_REORDER_FAILED: 'profiles.page.feedback.errors.reorderFailed',
   PROFILE_SWITCH_FAILED: 'profiles.page.feedback.errors.switchFailed',
+  PROFILE_SUBSCRIPTION_PASSWORD_REQUIRED:
+    'profiles.modals.subscriptionPassword.title',
+  PROFILE_SUBSCRIPTION_PASSWORD_INCORRECT:
+    'profiles.modals.subscriptionPassword.incorrect',
   PROFILE_UPDATE_FAILED: 'profiles.page.feedback.errors.updateFailed',
   SERVICE_INSTALL_FAILED: 'settings.feedback.errors.clashService.installFailed',
   SERVICE_REINSTALL_FAILED:

@@ -53,6 +53,7 @@ import { mutate } from '@/services/mutate'
 import { errorDetail, showNotice } from '@/services/notice-service'
 import { revalidateQuery, useQuery } from '@/services/query-client'
 import { useThemeMode } from '@/services/states'
+import { withSubscriptionPassword } from '@/services/subscription-password'
 import {
   useProfileLoadingCache,
   useProfileUpdates,
@@ -219,10 +220,24 @@ const ProfilePage = () => {
       await performRobustRefresh(prevCurrent)
     }
     try {
-      await mutate(() => importProfile(url), {
-        id: 'import-profile',
-        errorNotice: false,
-      })
+      const result = await withSubscriptionPassword(
+        (pw) =>
+          mutate(
+            () =>
+              importProfile(
+                url,
+                pw
+                  ? { with_proxy: true, subscription_password: pw }
+                  : undefined,
+              ),
+            {
+              id: 'import-profile',
+              errorNotice: false,
+            },
+          ),
+        new URL(url).hostname,
+      )
+      if (result === null) return
       await handleImportSuccess('shared.feedback.notifications.importSuccess')
     } catch (initialErr) {
       console.warn('[订阅导入] 首次导入失败:', initialErr)
@@ -235,17 +250,20 @@ const ProfilePage = () => {
 
       showNotice.info('profiles.page.feedback.notifications.importRetry')
       try {
-        await mutate(
-          () =>
-            importProfile(url, {
-              with_proxy: false,
-              self_proxy: true,
-            }),
-          {
-            id: 'import-profile',
-            errorNotice: false,
-          },
+        const result = await withSubscriptionPassword(
+          (pw) =>
+            mutate(
+              () =>
+                importProfile(url, {
+                  with_proxy: false,
+                  self_proxy: true,
+                  ...(pw ? { subscription_password: pw } : {}),
+                }),
+              { id: 'import-profile', errorNotice: false },
+            ),
+          new URL(url).hostname,
         )
+        if (result === null) return
         await handleImportSuccess(
           'shared.feedback.notifications.importWithClashProxy',
         )
@@ -548,10 +566,22 @@ const ProfilePage = () => {
       const updateOne = async (uid: string) => {
         try {
           // Per-uid id: the worker pool must not dedupe distinct subscriptions.
-          await mutate(() => updateProfile(uid), {
-            id: `update-profile:${uid}`,
-            errorNotice: false,
-          })
+          const result = await withSubscriptionPassword(
+            (pw) =>
+              mutate(
+                () =>
+                  updateProfile(
+                    uid,
+                    pw ? { subscription_password: pw } : undefined,
+                  ),
+                {
+                  id: `update-profile:${uid}`,
+                  errorNotice: false,
+                },
+              ),
+            profileItems.find((item) => item.uid === uid)?.name || uid,
+          )
+          if (result === null) return
           throttleMutate()
         } catch (err: any) {
           console.error(`更新订阅 ${uid} 失败:`, err)
@@ -573,7 +603,7 @@ const ProfilePage = () => {
         void mutateProfiles()
       }
     },
-    [mutateProfiles, setLoadingProfiles],
+    [mutateProfiles, profileItems, setLoadingProfiles],
   )
   const onUpdateAll = useLockFn(async () => {
     const items = profileItems.filter((e) => e.type === 'remote')

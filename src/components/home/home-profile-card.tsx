@@ -28,6 +28,7 @@ import { useAppRefreshers } from '@/providers/app-data-context'
 import { updateProfile } from '@/services/cmds'
 import { mutate } from '@/services/mutate'
 import { showNotice } from '@/services/notice-service'
+import { withSubscriptionPassword } from '@/services/subscription-password'
 import { isValidUrl } from '@/utils/network'
 import { openExternalUrl } from '@/utils/open-external-url'
 import parseTraffic from '@/utils/parse-traffic'
@@ -279,13 +280,21 @@ export const HomeProfileCard = ({
 
     setUpdating(true)
     try {
-      await mutate(
-        () => updateProfile(current.uid!, current.option ?? undefined),
-        {
-          id: `update-profile:${current.uid}`,
-          errorNotice: false,
-        },
+      const result = await withSubscriptionPassword(
+        (pw) =>
+          mutate(
+            () =>
+              updateProfile(
+                current.uid!,
+                pw
+                  ? { ...current.option, subscription_password: pw }
+                  : (current.option ?? undefined),
+              ),
+            { id: `update-profile:${current.uid}`, errorNotice: false },
+          ),
+        current.name || current.uid,
       )
+      if (result === null) return
       onProfileUpdated?.()
 
       // 刷新首页数据

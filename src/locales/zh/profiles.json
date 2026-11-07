@@ -109,6 +109,11 @@
     }
   },
   "modals": {
+    "subscriptionPassword": {
+      "title": "订阅需要密码",
+      "message": "「{{name}}」的订阅内容已加密，请输入密码",
+      "incorrect": "密码不正确，请重试"
+    },
     "profileForm": {
       "title": {
         "create": "新建配置",
@@ -119,6 +124,8 @@
         "description": "描述",
         "subscriptionUrl": "订阅链接",
         "userAgent": "用户代理",
+        "subscriptionPassword": "订阅密码",
+        "subscriptionPasswordHint": "仅用于加密订阅",
         "httpTimeout": "HTTP 请求超时",
         "updateInterval": "更新间隔",
         "useSystemProxy": "使用系统代理更新",

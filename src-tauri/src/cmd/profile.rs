@@ -2,6 +2,7 @@ use super::{CmdResult, StringifyErr as _, WithErrorCode as _, coded_error};
 use crate::cmd::validate::{ValidationNoticeTarget, handle_validation_notice};
 use crate::config::profiles;
 use crate::core::notify::NoticeStatus;
+use crate::utils::subscription_crypto::SubscriptionPasswordError;
 use crate::utils::window_manager::WindowManager;
 use crate::{
     config::{
@@ -73,6 +74,9 @@ pub async fn import_profile(url: std::string::String, option: Option<PrfOption>)
         Ok(it) => it,
         Err(e) => {
             logging!(error, Type::Cmd, "[导入订阅] 下载失败: {e:#}");
+            if let Some(err) = SubscriptionPasswordError::from_chain(&e) {
+                return Err(coded_error(err.code(), err));
+            }
             return Err(coded_error("PROFILE_IMPORT_FAILED", profile_import_error(&e)));
         }
     };
@@ -132,7 +136,10 @@ pub async fn create_profile(item: ProfileCreate, file_data: Option<std::string::
             logging_error!(Type::Timer, Timer::global().refresh().await);
             Ok(())
         }
-        Err(err) => Err(coded_error("PROFILE_CREATE_FAILED", err)),
+        Err(err) => match SubscriptionPasswordError::from_chain(&err) {
+            Some(password_error) => Err(coded_error(password_error.code(), password_error)),
+            None => Err(coded_error("PROFILE_CREATE_FAILED", err)),
+        },
     }
 }
 
@@ -144,6 +151,9 @@ pub async fn update_profile(index: std::string::String, option: Option<PrfOption
         Ok(_) => Ok(()),
         Err(e) => {
             logging!(error, Type::Cmd, "update profile failed: {e:#}");
+            if let Some(err) = SubscriptionPasswordError::from_chain(&e) {
+                return Err(coded_error(err.code(), err));
+            }
             Err(coded_error("PROFILE_UPDATE_FAILED", e))
         }
     }

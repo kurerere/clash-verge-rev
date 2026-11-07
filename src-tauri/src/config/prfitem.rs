@@ -5,6 +5,7 @@ use crate::{
     utils::{
         dirs, help,
         network::{NetworkManager, ProxyType},
+        subscription_crypto::{self, SubscriptionPasswordError},
         tmpl,
     },
 };
@@ -97,6 +98,10 @@ pub struct PrfOption {
     pub user_agent: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(type = Option<std::string::String>)]
+    pub subscription_password: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub with_proxy: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -134,6 +139,7 @@ impl PrfOption {
             (Some(a_ref), Some(b_ref)) => {
                 let mut result = a_ref.clone();
                 patch_opt_field!(result, b_ref, user_agent);
+                patch_opt_field!(result, b_ref, subscription_password);
                 patch_opt_field!(result, b_ref, with_proxy);
                 patch_opt_field!(result, b_ref, self_proxy);
                 patch_opt_field!(result, b_ref, danger_accept_invalid_certs);
@@ -307,6 +313,10 @@ impl PrfItem {
         }
 
         let header = resp.headers();
+        let encrypted = header
+            .get(subscription_crypto::ENCRYPTION_HEADER)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(subscription_crypto::is_encrypted);
 
         let extra;
         'extra: {
@@ -377,6 +387,16 @@ impl PrfItem {
         let data = resp.text();
 
         let data = data.trim_start_matches('\u{feff}');
+        let password = option
+            .and_then(|o| o.subscription_password.as_deref())
+            .filter(|p| !p.is_empty());
+        let decrypted = if encrypted {
+            let password = password.ok_or(SubscriptionPasswordError::Required)?;
+            Some(subscription_crypto::decrypt(password, data).ok_or(SubscriptionPasswordError::Incorrect)?)
+        } else {
+            None
+        };
+        let data = decrypted.as_deref().unwrap_or(data).trim_start_matches('\u{feff}');
 
         let yaml = serde_yaml_ng::from_str::<Mapping>(data).context("the remote profile data is invalid yaml")?;
 
@@ -403,6 +423,7 @@ impl PrfItem {
                 proxies,
                 groups,
                 allow_auto_update,
+                subscription_password: if encrypted { password.map(Into::into) } else { None },
                 ..PrfOption::default()
             }),
             home,

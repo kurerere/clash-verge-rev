@@ -109,6 +109,11 @@
     }
   },
   "modals": {
+    "subscriptionPassword": {
+      "title": "Abonnementpasswort erforderlich",
+      "message": "Das Abonnement „{{name}}“ ist verschlüsselt. Gib das Passwort ein.",
+      "incorrect": "Falsches Passwort, bitte erneut versuchen"
+    },
     "profileForm": {
       "title": {
         "create": "Neue Konfiguration erstellen",
@@ -119,6 +124,8 @@
         "description": "Beschreibung",
         "subscriptionUrl": "Abonnement-Link",
         "userAgent": "User Agent",
+        "subscriptionPassword": "Abonnementpasswort",
+        "subscriptionPasswordHint": "Nur für verschlüsselte Abonnements",
         "httpTimeout": "Zeitlimit für HTTP-Anfragen",
         "updateInterval": "Aktualisierungsintervall",
         "useSystemProxy": "Systemproxy zur Aktualisierung verwenden",

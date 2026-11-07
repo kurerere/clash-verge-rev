@@ -53,12 +53,30 @@ pub async fn try_strategies<
     rest: [S; N],
     mut operation: impl FnMut(S) -> Fut + Send,
 ) -> Result<(S, T), E> {
+    try_strategies_with_stop(first, rest, move |strategy| {
+        let future = operation(strategy);
+        async move { future.await.map_err(RetryError::Retry) }
+    })
+    .await
+}
+
+pub async fn try_strategies_with_stop<
+    S: Copy + Send,
+    T: Send,
+    E: Send,
+    Fut: Future<Output = Result<T, RetryError<E>>> + Send,
+    const N: usize,
+>(
+    first: S,
+    rest: [S; N],
+    mut operation: impl FnMut(S) -> Fut + Send,
+) -> Result<(S, T), E> {
     retry(
         RetryPolicy::fixed(NonZeroUsize::MIN.saturating_add(N), Duration::ZERO),
         move |attempt| {
             let strategy = if attempt == 0 { first } else { rest[attempt - 1] };
             let future = operation(strategy);
-            async move { future.await.map(|value| (strategy, value)).map_err(RetryError::Retry) }
+            async move { future.await.map(|value| (strategy, value)) }
         },
     )
     .await

@@ -109,6 +109,11 @@
     }
   },
   "modals": {
+    "subscriptionPassword": {
+      "title": "구독 비밀번호가 필요합니다",
+      "message": "「{{name}}」 구독이 암호화되어 있습니다. 비밀번호를 입력하세요.",
+      "incorrect": "비밀번호가 올바르지 않습니다. 다시 시도하세요"
+    },
     "profileForm": {
       "title": {
         "create": "프로필 생성",
@@ -119,6 +124,8 @@
         "description": "설명",
         "subscriptionUrl": "구독 URL",
         "userAgent": "사용자 에이전트",
+        "subscriptionPassword": "구독 비밀번호",
+        "subscriptionPasswordHint": "암호화된 구독에만 사용",
         "httpTimeout": "HTTP 요청 시간 초과",
         "updateInterval": "업데이트 간격",
         "useSystemProxy": "시스템 프록시 사용",

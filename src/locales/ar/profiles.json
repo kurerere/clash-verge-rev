@@ -109,6 +109,11 @@
     }
   },
   "modals": {
+    "subscriptionPassword": {
+      "title": "كلمة مرور الاشتراك مطلوبة",
+      "message": "الاشتراك «{{name}}» مشفّر. أدخل كلمة المرور.",
+      "incorrect": "كلمة المرور غير صحيحة، حاول مجددًا"
+    },
     "profileForm": {
       "title": {
         "create": "إنشاء ملف شخصي",
@@ -119,6 +124,8 @@
         "description": "الوصف",
         "subscriptionUrl": "رابط الاشتراك",
         "userAgent": "وكيل المستخدم",
+        "subscriptionPassword": "كلمة مرور الاشتراك",
+        "subscriptionPasswordHint": "للاشتراكات المشفّرة فقط",
         "httpTimeout": "HTTP Request Timeout",
         "updateInterval": "فاصل التحديث",
         "useSystemProxy": "استخدام وكيل النظام",

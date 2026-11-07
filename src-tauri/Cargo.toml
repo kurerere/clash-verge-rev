@@ -106,6 +106,9 @@ tokio-util = { version = "0.7.20", features = ["time"] }
 specta = { version = "=2.0.0-rc.26", features = ["derive", "function", "serde_json"] }
 tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
 specta-typescript = "=0.0.13"
+aes = "0.9.2"
+cbc = { version = "0.2.0", features = ["alloc"] }
+md-5 = "0.10.6"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.191"

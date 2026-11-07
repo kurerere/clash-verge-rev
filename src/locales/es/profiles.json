@@ -109,6 +109,11 @@
     }
   },
   "modals": {
+    "subscriptionPassword": {
+      "title": "Se requiere la contraseña de la suscripción",
+      "message": "La suscripción «{{name}}» está cifrada. Introduce su contraseña.",
+      "incorrect": "Contraseña incorrecta, inténtalo de nuevo"
+    },
     "profileForm": {
       "title": {
         "create": "Crear configuración",
@@ -119,6 +124,8 @@
         "description": "Descripción",
         "subscriptionUrl": "Enlace de suscripción",
         "userAgent": "Agente de usuario",
+        "subscriptionPassword": "Contraseña de la suscripción",
+        "subscriptionPasswordHint": "Solo para suscripciones cifradas",
         "httpTimeout": "HTTP Request Timeout",
         "updateInterval": "Intervalo de actualización",
         "useSystemProxy": "Usar proxy del sistema para actualizar",

@@ -109,6 +109,11 @@
     }
   },
   "modals": {
+    "subscriptionPassword": {
+      "title": "訂閱需要密碼",
+      "message": "「{{name}}」的訂閱內容已加密，請輸入密碼",
+      "incorrect": "密碼不正確，請重試"
+    },
     "profileForm": {
       "title": {
         "create": "新增設定檔",
@@ -119,6 +124,8 @@
         "description": "描述",
         "subscriptionUrl": "訂閱網址",
         "userAgent": "使用者代理",
+        "subscriptionPassword": "訂閱密碼",
+        "subscriptionPasswordHint": "僅用於加密訂閱",
         "httpTimeout": "HTTP Request Timeout",
         "updateInterval": "更新間隔",
         "useSystemProxy": "使用系統代理更新",

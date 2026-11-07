@@ -5,6 +5,7 @@ use crate::{
     config::{Config, PrfItem, PrfOption, profiles::profiles_update_item_safe},
     core::{CoreManager, handle, tray, validate::ValidationOutcome},
     utils::help::{mask_err, mask_url},
+    utils::{retry::RetryError, subscription_crypto::SubscriptionPasswordError},
 };
 use anyhow::{Result, bail};
 use clash_verge_logging::{Type, logging};
@@ -111,8 +112,10 @@ async fn perform_profile_update(
         System,
     }
 
-    let result =
-        crate::utils::retry::try_strategies(Strategy::Configured, [Strategy::Clash, Strategy::System], |strategy| {
+    let result = crate::utils::retry::try_strategies_with_stop(
+        Strategy::Configured,
+        [Strategy::Clash, Strategy::System],
+        |strategy| {
             let mut options = merged_opt.clone();
             async move {
                 let (name, success, failure) = match strategy {
@@ -151,6 +154,9 @@ async fn perform_profile_update(
                 tracing::Span::current().record(elapsed_field, tracing::field::debug(started.elapsed()));
                 match &result {
                     Ok(_) => logging!(info, Type::Config, "{success}"),
+                    Err(error) if SubscriptionPasswordError::from_chain(error).is_some() => {
+                        logging!(warn, Type::Config, "[订阅更新] 订阅密码错误或缺失: {error}");
+                    }
                     Err(error) => logging!(
                         warn,
                         Type::Config,
@@ -158,10 +164,17 @@ async fn perform_profile_update(
                         failure.replace("{}", &mask_err(&format!("{error:#}")))
                     ),
                 }
-                result
+                result.map_err(|error| {
+                    if SubscriptionPasswordError::from_chain(&error).is_some() {
+                        RetryError::Stop(error)
+                    } else {
+                        RetryError::Retry(error)
+                    }
+                })
             }
-        })
-        .await;
+        },
+    )
+    .await;
     let last_err = match result {
         Ok((strategy, mut item)) => {
             // A persistence error must not replay a successful download with another transport.
@@ -174,6 +187,9 @@ async fn perform_profile_update(
         Err(error) => error,
     };
 
+    if SubscriptionPasswordError::from_chain(&last_err).is_some() {
+        return Err(last_err);
+    }
     let last_err = mask_err(&last_err.to_string());
     if is_mannual_trigger {
         handle::Handle::notice(

@@ -109,6 +109,11 @@
     }
   },
   "modals": {
+    "subscriptionPassword": {
+      "title": "サブスクリプションのパスワードが必要です",
+      "message": "「{{name}}」のサブスクリプションは暗号化されています。パスワードを入力してください。",
+      "incorrect": "パスワードが正しくありません。もう一度お試しください"
+    },
     "profileForm": {
       "title": {
         "create": "新規プロファイルを作成",
@@ -119,6 +124,8 @@
         "description": "説明",
         "subscriptionUrl": "サブスクリプションURL",
         "userAgent": "ユーザーエージェント",
+        "subscriptionPassword": "サブスクリプションのパスワード",
+        "subscriptionPasswordHint": "暗号化されたサブスクリプション専用",
         "httpTimeout": "HTTP Request Timeout",
         "updateInterval": "更新間隔",
         "useSystemProxy": "システムプロキシを使用して更新",

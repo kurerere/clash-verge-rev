@@ -13,6 +13,7 @@ import {
   WindowControls,
   WindowResizeHandles,
 } from '@/components/layout/window-controller'
+import { SubscriptionPasswordDialog } from '@/components/profile/subscription-password-dialog'
 import { useI18n } from '@/hooks/use-i18n'
 import { useVerge } from '@/hooks/use-verge'
 import { useWindowDecorations } from '@/hooks/use-window'
@@ -107,6 +108,7 @@ const Layout = () => {
       <NoticeManager position={verge?.notice_position} />
       <ServiceMigrationDialog />
       <SysproxyPrivilegeDialog />
+      <SubscriptionPasswordDialog />
       <Paper
         square
         elevation={0}

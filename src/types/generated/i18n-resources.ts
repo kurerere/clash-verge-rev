@@ -389,6 +389,8 @@ export interface TranslationResources {
             allowAutoUpdate: string
             description: string
             httpTimeout: string
+            subscriptionPassword: string
+            subscriptionPasswordHint: string
             subscriptionUrl: string
             type: string
             updateInterval: string
@@ -419,6 +421,11 @@ export interface TranslationResources {
           title: string
         }
         qrViewer: {
+          title: string
+        }
+        subscriptionPassword: {
+          incorrect: string
+          message: string
           title: string
         }
       }

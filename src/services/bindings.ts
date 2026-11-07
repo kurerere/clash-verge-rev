@@ -727,6 +727,7 @@ export type PrfOption = PrfOption_Serialize | PrfOption_Deserialize
 
 export type PrfOption_Deserialize = {
   user_agent?: string | null
+  subscription_password?: string | null
   with_proxy?: boolean | null
   self_proxy?: boolean | null
   update_interval?: number | null
@@ -747,6 +748,7 @@ export type PrfOption_Deserialize = {
 
 export type PrfOption_Serialize = {
   user_agent?: string
+  subscription_password?: string
   with_proxy?: boolean
   self_proxy?: boolean
   update_interval?: number

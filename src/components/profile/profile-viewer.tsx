@@ -1,6 +1,8 @@
+import { Visibility, VisibilityOff } from '@mui/icons-material'
 import {
   Box,
   FormControl,
+  IconButton,
   InputAdornment,
   InputLabel,
   MenuItem,
@@ -19,6 +21,10 @@ import { useProfiles } from '@/hooks/use-profiles'
 import { createProfile, patchProfile } from '@/services/cmds'
 import { mutate } from '@/services/mutate'
 import { showNotice } from '@/services/notice-service'
+import {
+  subscriptionPasswordFailure,
+  withSubscriptionPassword,
+} from '@/services/subscription-password'
 import { version } from '@root/package.json'
 
 import { FileInput } from './file-input'
@@ -42,6 +48,7 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
   const [open, setOpen] = useState(false)
   const [openType, setOpenType] = useState<'new' | 'edit'>('new')
   const [loading, setLoading] = useState(false)
+  const [passwordVisible, setPasswordVisible] = useState(false)
   const { profiles } = useProfiles()
 
   const fileDataRef = useRef<string | null>(null)
@@ -102,6 +109,9 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
         if (option?.user_agent === '') {
           option.user_agent = undefined
         }
+        if (option?.subscription_password === '') {
+          option.subscription_password = undefined
+        }
 
         const name = form.name || `${form.type} file`
         const item = {
@@ -139,24 +149,62 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
               errorNotice: false,
             })
           }
-        } else {
-          try {
-            if (openType === 'new') {
-              await mutate(() => createProfile(item, fileDataRef.current), {
-                id: 'create-profile',
-                errorNotice: false,
-              })
-            } else {
-              if (!form.uid) {
-                throw new Error(
-                  t('profiles.modals.profileForm.errors.uidMissing'),
-                )
-              }
-              await mutate(() => patchProfile(form.uid!, item), {
-                id: 'patch-profile',
-                errorNotice: false,
-              })
+        } else if (openType === 'new') {
+          const result = await withSubscriptionPassword(async (password) => {
+            if (password !== undefined) {
+              setValue('option.subscription_password', password)
             }
+            const attempt = {
+              ...item,
+              option:
+                password === undefined
+                  ? item.option
+                  : { ...item.option, subscription_password: password },
+            }
+            try {
+              return await mutate(
+                () => createProfile(attempt, fileDataRef.current),
+                {
+                  id: 'create-profile',
+                  errorNotice: false,
+                },
+              )
+            } catch (err) {
+              if (subscriptionPasswordFailure(err)) throw err
+              showNotice.info(
+                'profiles.modals.profileForm.feedback.notifications.creationRetry',
+              )
+              const retryItem = {
+                ...attempt,
+                option: {
+                  ...attempt.option,
+                  with_proxy: false,
+                  self_proxy: true,
+                },
+              }
+              const result = await mutate(
+                () => createProfile(retryItem, fileDataRef.current),
+                {
+                  id: 'create-profile',
+                  errorNotice: false,
+                },
+              )
+              showNotice.success(
+                'profiles.modals.profileForm.feedback.notifications.creationSuccess',
+              )
+              return result
+            }
+          }, name)
+          if (result === null) return
+        } else {
+          if (!form.uid) {
+            throw new Error(t('profiles.modals.profileForm.errors.uidMissing'))
+          }
+          try {
+            await mutate(() => patchProfile(form.uid!, item), {
+              id: 'patch-profile',
+              errorNotice: false,
+            })
           } catch {
             showNotice.info(
               'profiles.modals.profileForm.feedback.notifications.creationRetry',
@@ -171,33 +219,17 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
               },
             }
 
-            if (openType === 'new') {
-              await mutate(
-                () => createProfile(retryItem, fileDataRef.current),
-                {
-                  id: 'create-profile',
-                  errorNotice: false,
-                },
-              )
-            } else {
-              if (!form.uid) {
-                throw new Error(
-                  t('profiles.modals.profileForm.errors.uidMissing'),
-                )
-              }
-              await mutate(() => patchProfile(form.uid!, retryItem), {
+            await mutate(() => patchProfile(form.uid!, retryItem), {
+              id: 'patch-profile',
+              errorNotice: false,
+            })
+            await mutate(
+              () => patchProfile(form.uid!, { option: originalOptions }),
+              {
                 id: 'patch-profile',
                 errorNotice: false,
-              })
-
-              await mutate(
-                () => patchProfile(form.uid!, { option: originalOptions }),
-                {
-                  id: 'patch-profile',
-                  errorNotice: false,
-                },
-              )
-            }
+              },
+            )
 
             showNotice.success(
               'profiles.modals.profileForm.feedback.notifications.creationSuccess',
@@ -336,6 +368,43 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
                 {...field}
                 placeholder={`clash-verge/v${version}`}
                 label={t('profiles.modals.profileForm.fields.userAgent')}
+              />
+            )}
+          />
+
+          <Controller
+            name="option.subscription_password"
+            control={control}
+            render={({ field }) => (
+              <TextField
+                {...text}
+                {...field}
+                value={field.value ?? ''}
+                type={passwordVisible ? 'text' : 'password'}
+                label={t(
+                  'profiles.modals.profileForm.fields.subscriptionPassword',
+                )}
+                helperText={t(
+                  'profiles.modals.profileForm.fields.subscriptionPasswordHint',
+                )}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          aria-label={t(
+                            'profiles.modals.profileForm.fields.subscriptionPassword',
+                          )}
+                          aria-pressed={passwordVisible}
+                          onClick={() => setPasswordVisible(!passwordVisible)}
+                          edge="end"
+                        >
+                          {passwordVisible ? <VisibilityOff /> : <Visibility />}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  },
+                }}
               />
             )}
           />

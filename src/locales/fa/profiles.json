@@ -109,6 +109,11 @@
     }
   },
   "modals": {
+    "subscriptionPassword": {
+      "title": "رمز اشتراک لازم است",
+      "message": "اشتراک «{{name}}» رمزگذاری شده است. رمز آن را وارد کنید.",
+      "incorrect": "رمز نادرست است، دوباره تلاش کنید"
+    },
     "profileForm": {
       "title": {
         "create": "ایجاد پروفایل",
@@ -119,6 +124,8 @@
         "description": "توضیحات",
         "subscriptionUrl": "آدرس اشتراک",
         "userAgent": "عامل کاربر",
+        "subscriptionPassword": "رمز اشتراک",
+        "subscriptionPasswordHint": "فقط برای اشتراک‌های رمزگذاری‌شده",
         "httpTimeout": "HTTP Request Timeout",
         "updateInterval": "فاصله زمانی به‌روزرسانی",
         "useSystemProxy": "استفاده از پراکسی سیستم",

@@ -42,6 +42,7 @@ import {
 } from '@/services/cmds'
 import { mutate } from '@/services/mutate'
 import { showNotice } from '@/services/notice-service'
+import { withSubscriptionPassword } from '@/services/subscription-password'
 import {
   useProfileLoadingCache,
   useSetProfileLoading,
@@ -400,10 +401,22 @@ const ProfileItemBase = (props: ProfileItemProps) => {
 
     try {
       const payload = Object.keys(option).length > 0 ? option : undefined
-      await mutate(() => updateProfile(itemData.uid!, payload), {
-        id: `update-profile:${itemData.uid}`,
-        errorNotice: false,
-      })
+      const result = await withSubscriptionPassword(
+        (pw) =>
+          mutate(
+            () =>
+              updateProfile(
+                itemData.uid!,
+                pw ? { ...payload, subscription_password: pw } : payload,
+              ),
+            {
+              id: `update-profile:${itemData.uid}`,
+              errorNotice: false,
+            },
+          ),
+        itemData.name || itemData.uid!,
+      )
+      if (result === null) return
 
       void mutateProfiles()
     } catch {

@@ -109,6 +109,11 @@
     }
   },
   "modals": {
+    "subscriptionPassword": {
+      "title": "Abonelik parolası gerekli",
+      "message": "«{{name}}» aboneliği şifrelenmiş. Parolasını girin.",
+      "incorrect": "Parola yanlış, lütfen tekrar deneyin"
+    },
     "profileForm": {
       "title": {
         "create": "Profil Oluştur",
@@ -119,6 +124,8 @@
         "description": "Açıklamalar",
         "subscriptionUrl": "Abonelik URL'si",
         "userAgent": "Kullanıcı Aracısı",
+        "subscriptionPassword": "Abonelik parolası",
+        "subscriptionPasswordHint": "Yalnızca şifreli abonelikler için",
         "httpTimeout": "HTTP İsteği Zaman Aşımı",
         "updateInterval": "Güncelleme Aralığı",
         "useSystemProxy": "Sistem Vekil'ini Kullan",

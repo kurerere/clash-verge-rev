@@ -109,6 +109,11 @@
     }
   },
   "modals": {
+    "subscriptionPassword": {
+      "title": "Subscription password required",
+      "message": "The subscription \"{{name}}\" is encrypted. Enter its password.",
+      "incorrect": "Incorrect password, please try again"
+    },
     "profileForm": {
       "title": {
         "create": "Create Profile",
@@ -119,6 +124,8 @@
         "description": "Descriptions",
         "subscriptionUrl": "Subscription URL",
         "userAgent": "User Agent",
+        "subscriptionPassword": "Subscription password",
+        "subscriptionPasswordHint": "Only for encrypted subscriptions",
         "httpTimeout": "HTTP Request Timeout",
         "updateInterval": "Update Interval",
         "useSystemProxy": "Use System Proxy",
