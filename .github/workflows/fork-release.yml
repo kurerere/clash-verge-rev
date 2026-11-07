@@ -25,6 +25,18 @@ jobs:
     outputs:
       release_id: ${{ steps.release.outputs.id }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Verify fork identity and updater endpoints
+        run: |
+          if ! jq -e --arg repo "github.com/${{ github.repository }}/" \
+            '.identifier == "io.github.clash-verge-rev.clash-verge-rev" and (.plugins.updater.endpoints | length > 0 and all(contains($repo)))' \
+            src-tauri/tauri.conf.json > /dev/null; then
+            echo "::error::tauri.conf.json must keep the upstream identifier and point every updater endpoint at this repository."
+            exit 1
+          fi
+
       - name: Create draft release
         id: release
         run: |
