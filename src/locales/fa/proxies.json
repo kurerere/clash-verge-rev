@@ -37,7 +37,9 @@
       "delayCheckUrl": "آدرس بررسی تأخیر",
       "showBasic": "پراکسی پایه",
       "showDetail": "جزئیات پراکسی",
-      "filter": "فیلتر"
+      "filter": "فیلتر",
+      "compactView": "نمای فشرده",
+      "standardView": "نمای استاندارد"
     },
     "placeholders": {
       "delayCheckUrl": "آدرس بررسی تأخیر"

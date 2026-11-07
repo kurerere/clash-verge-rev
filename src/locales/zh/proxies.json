@@ -37,7 +37,9 @@
       "delayCheckUrl": "延迟测试链接",
       "showBasic": "隐藏节点细节",
       "showDetail": "展示节点细节",
-      "filter": "过滤节点"
+      "filter": "过滤节点",
+      "compactView": "紧凑视图",
+      "standardView": "标准视图"
     },
     "placeholders": {
       "delayCheckUrl": "延迟测试链接"

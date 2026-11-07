@@ -38,6 +38,8 @@
 <details>
 <summary><strong> ✨ 新增功能 </strong></summary>
 
+- 新增代理组「紧凑视图」切换，节点以近方形卡片展示完整名称
+
 
 </details>
 

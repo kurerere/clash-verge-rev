@@ -37,7 +37,9 @@
       "delayCheckUrl": "URL для проверки задержки",
       "showBasic": "Показывать меньше информации о прокси",
       "showDetail": "Показывать больше информации о прокси",
-      "filter": "Фильтр"
+      "filter": "Фильтр",
+      "compactView": "Компактный вид",
+      "standardView": "Стандартный вид"
     },
     "placeholders": {
       "delayCheckUrl": "URL для проверки задержки"

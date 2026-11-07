@@ -37,7 +37,9 @@
       "delayCheckUrl": "رابط فحص التأخير",
       "showBasic": "إعدادات الوكيل الأساسية",
       "showDetail": "تفاصيل الوكيل",
-      "filter": "تصفية"
+      "filter": "تصفية",
+      "compactView": "عرض مضغوط",
+      "standardView": "عرض قياسي"
     },
     "placeholders": {
       "delayCheckUrl": "رابط فحص التأخير"

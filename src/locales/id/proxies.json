@@ -37,7 +37,9 @@
       "delayCheckUrl": "URL Periksa Keterlambatan",
       "showBasic": "Dasar Proksi",
       "showDetail": "Detail Proksi",
-      "filter": "Filter"
+      "filter": "Filter",
+      "compactView": "Tampilan ringkas",
+      "standardView": "Tampilan standar"
     },
     "placeholders": {
       "delayCheckUrl": "URL Periksa Keterlambatan"

@@ -37,7 +37,9 @@
       "delayCheckUrl": "URL do teste de latência",
       "showBasic": "Proxy básico",
       "showDetail": "Proxy detalhado",
-      "filter": "Filtro"
+      "filter": "Filtro",
+      "compactView": "Vista compacta",
+      "standardView": "Vista padrão"
     },
     "placeholders": {
       "delayCheckUrl": "URL do teste de latência"

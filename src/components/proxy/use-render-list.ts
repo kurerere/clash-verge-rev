@@ -98,6 +98,11 @@ const calculateColumns = (width: number, configCol: number): number => {
   return 1
 }
 
+// Compact mode targets ~125px near-square cards; the 120 offset approximates
+// sidebar and page padding since `width` is the body width.
+const calculateCompactColumns = (width: number): number =>
+  Math.max(2, Math.round((width - 120) / 125))
+
 const groupOccurrences = <T>(list: T[], size: number): T[][] =>
   list.reduce<T[][]>((acc, item) => {
     const lastGroup = acc[acc.length - 1]
@@ -140,6 +145,7 @@ export const useRenderList = (
     () => calculateColumns(width, verge?.proxy_layout_column || 6),
     [width, verge?.proxy_layout_column],
   )
+  const compactCol = useMemo(() => calculateCompactColumns(width), [width])
 
   const chainOccurrences = useMemo(() => {
     if (!proxyView || !isChainMode) return []
@@ -268,13 +274,14 @@ export const useRenderList = (
     const retList = renderGroups.flatMap((group) => {
       const isFlat = group === proxyView.global
       const headState = headStates[group.name] || DEFAULT_STATE
+      const groupCol = headState.compact ? compactCol : col
       const cached = cache.get(group.name)
       if (
         cached &&
         cached.now === group.now &&
         cached.members === group.members &&
         cached.headState === headState &&
-        cached.col === col &&
+        cached.col === groupCol &&
         cached.latencyTimeout === latencyTimeout &&
         cached.delays === groupDelays.get(group.name)
       ) {
@@ -309,14 +316,14 @@ export const useRenderList = (
         )
         if (occurrences.length === 0) {
           ret.push({ type: 3, key: `empty-${group.name}`, group, headState })
-        } else if (col > 1) {
+        } else if (groupCol > 1) {
           ret.push(
-            ...groupOccurrences(occurrences, col).map((memberCol) => ({
+            ...groupOccurrences(occurrences, groupCol).map((memberCol) => ({
               type: 4 as const,
               key: `col:${memberKey(group, memberCol[0])}`,
               group,
               headState,
-              col,
+              col: groupCol,
               memberCol,
             })),
           )
@@ -337,7 +344,7 @@ export const useRenderList = (
         now: group.now!,
         members: group.members,
         headState,
-        col,
+        col: groupCol,
         latencyTimeout: latencyTimeout!,
         delays: groupDelays.get(group.name),
         items: ret,
@@ -358,6 +365,7 @@ export const useRenderList = (
   }, [
     chainOccurrences,
     col,
+    compactCol,
     groupDelays,
     headStates,
     isChainMode,

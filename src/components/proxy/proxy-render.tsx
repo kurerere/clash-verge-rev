@@ -25,6 +25,7 @@ import { ProxyGroupHeaderBlock } from './proxy-group-header-block'
 import { ProxyGroupTools } from './proxy-group-tools'
 import { ProxyHead } from './proxy-head'
 import { ProxyItem } from './proxy-item'
+import { ProxyItemCompact } from './proxy-item-compact'
 import { ProxyItemMini } from './proxy-item-mini'
 import type { HeadState } from './use-head-state'
 import type { IRenderItem } from './use-render-list'
@@ -70,13 +71,15 @@ export const ProxyRender = memo(function ProxyRender(props: RenderProps) {
   })
 
   const showType = headState?.showType
+  const compact = headState?.compact
   const memberColItemsMemo = useMemo(() => {
     if (type !== 4 || !memberCol) {
       return null
     }
 
+    const MemberItem = compact ? ProxyItemCompact : ProxyItemMini
     return memberCol.map((occurrence) => (
-      <ProxyItemMini
+      <MemberItem
         key={`${item.key}-${occurrence.memberIndex}`}
         group={group}
         member={occurrence.member}
@@ -85,7 +88,7 @@ export const ProxyRender = memo(function ProxyRender(props: RenderProps) {
         onClick={(nextMember) => onChangeProxy(group, nextMember)}
       />
     ))
-  }, [type, memberCol, item.key, group, showType, onChangeProxy])
+  }, [type, memberCol, item.key, group, showType, compact, onChangeProxy])
 
   if (type === 0) {
     const nameBlock = (
@@ -294,12 +297,12 @@ export const ProxyRender = memo(function ProxyRender(props: RenderProps) {
     return (
       <Box
         sx={{
-          height: 56,
           display: 'grid',
           my: 0.5,
           gap: 1,
           px: 2,
           gridTemplateColumns: `repeat(${item.col! || 2}, 1fr)`,
+          height: compact ? 'auto' : 56,
         }}
       >
         {memberColItemsMemo}
