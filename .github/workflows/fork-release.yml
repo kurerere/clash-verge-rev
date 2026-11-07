@@ -1,0 +1,116 @@
+name: Fork Release
+
+on:
+  push:
+    tags:
+      - 'v*-kure.*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fork-release
+  cancel-in-progress: false
+
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+  HUSKY: 0
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    outputs:
+      release_id: ${{ steps.release.outputs.id }}
+    steps:
+      - name: Create draft release
+        id: release
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft \
+            --title "Clash Verge Rev $GITHUB_REF_NAME" \
+            --notes "Fork build of $GITHUB_REF_NAME." \
+            --target "$GITHUB_SHA" -R "${{ github.repository }}"
+          echo "id=$(gh release view "$GITHUB_REF_NAME" --json databaseId -q .databaseId -R "${{ github.repository }}")" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.99.1'
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: true
+          prefix-key: 'v1-rust'
+          shared-key: 'rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}'
+          workspaces: |
+            . -> target
+          cache-all-crates: true
+          cache-workspace-crates: true
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '26.13.0'
+          cache: 'pnpm'
+
+      - name: Install dependencies and prepare release
+        shell: bash
+        run: |
+          pnpm i
+          pnpm release-version "$GITHUB_REF_NAME"
+          pnpm run prebuild ${{ matrix.target }}
+
+      - name: Build and upload
+        uses: tauri-apps/tauri-action@v1.0.0
+        env:
+          NODE_OPTIONS: '--max_old_space_size=4096'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          tauriScript: pnpm
+          args: --target ${{ matrix.target }}
+          uploadUpdaterJson: true
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Verify updater manifest and publish release
+        run: |
+          gh release download "$GITHUB_REF_NAME" -p latest.json -R "${{ github.repository }}"
+          if ! jq -e --arg version "${GITHUB_REF_NAME#v}" \
+            '.version == $version and (.platforms | has("windows-x86_64") and has("darwin-aarch64"))' latest.json > /dev/null; then
+            echo "::error::Updater manifest is missing a platform or has the wrong version."
+            exit 1
+          fi
+          gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease=false --latest -R "${{ github.repository }}"
