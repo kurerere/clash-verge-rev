@@ -5,8 +5,8 @@ upstream contract; this file holds only what differs here.
 
 ## Intent
 
-- Upstream `dev` plus a small set of local features (compact proxy view,
-  encrypted subscriptions), shipped from this fork's own releases with its own
+- Upstream `dev` plus a small set of local features (encrypted
+  subscriptions), shipped from this fork's own releases with its own
   auto-update channel. It fully replaces the official app on the maintainer's
   machines.
 - Features here don't need a pre-existing issue; the maintainer waived
