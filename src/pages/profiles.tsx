@@ -539,9 +539,6 @@ const ProfilePage = () => {
       })
       mutateProfiles()
       mutateLogs()
-      if (current) {
-        await onEnhance(false)
-      }
     } catch (err: any) {
       showNotice.error(err)
     } finally {
@@ -683,10 +680,6 @@ const ProfilePage = () => {
 
       await mutateProfiles()
       await mutateLogs()
-
-      if (currentActivating.length > 0) {
-        await onEnhance(false)
-      }
 
       setSelectedProfiles(new Set())
       setBatchMode(false)
