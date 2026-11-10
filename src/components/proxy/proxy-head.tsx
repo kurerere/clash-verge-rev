@@ -10,8 +10,6 @@ import {
   WifiTetheringOffRounded,
   SortByAlphaRounded,
   SortRounded,
-  ViewComfyRounded,
-  ViewCozyRounded,
 } from '@mui/icons-material'
 import { Box, IconButton, TextField, type SxProps } from '@mui/material'
 import { useEffect, useState } from 'react'
@@ -50,7 +48,6 @@ export const ProxyHead = ({
 }: Props) => {
   const {
     showType,
-    compact,
     sortType,
     filterText,
     textState,
@@ -155,19 +152,6 @@ export const ProxyHead = ({
         onClick={() => onHeadState({ showType: !showType })}
       >
         {showType ? <VisibilityRounded /> : <VisibilityOffRounded />}
-      </IconButton>
-
-      <IconButton
-        size="small"
-        color="inherit"
-        title={
-          compact
-            ? t('proxies.page.tooltips.standardView')
-            : t('proxies.page.tooltips.compactView')
-        }
-        onClick={() => onHeadState({ compact: !compact })}
-      >
-        {compact ? <ViewCozyRounded /> : <ViewComfyRounded />}
       </IconButton>
 
       <IconButton

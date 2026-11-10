@@ -37,9 +37,7 @@
       "delayCheckUrl": "Delay check URL",
       "showBasic": "Proxy basic",
       "showDetail": "Proxy detail",
-      "filter": "Filter",
-      "compactView": "Compact view",
-      "standardView": "Standard view"
+      "filter": "Filter"
     },
     "placeholders": {
       "delayCheckUrl": "Delay check URL"

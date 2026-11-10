@@ -603,7 +603,6 @@ export interface TranslationResources {
           default: string
         }
         tooltips: {
-          compactView: string
           delayCheck: string
           delayCheckUrl: string
           filter: string
@@ -613,7 +612,6 @@ export interface TranslationResources {
           sortDefault: string
           sortDelay: string
           sortName: string
-          standardView: string
         }
       }
     }

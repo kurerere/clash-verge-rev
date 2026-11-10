@@ -37,9 +37,7 @@
       "delayCheckUrl": "Gecikme kontrol URL'si",
       "showBasic": "Temel Vekil",
       "showDetail": "Vekil detayı",
-      "filter": "Filtre",
-      "compactView": "Kompakt görünüm",
-      "standardView": "Standart görünüm"
+      "filter": "Filtre"
     },
     "placeholders": {
       "delayCheckUrl": "Gecikme kontrol URL'si"

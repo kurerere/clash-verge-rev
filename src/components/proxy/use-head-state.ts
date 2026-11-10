@@ -7,7 +7,6 @@ import { ProxySortType } from './use-filter-sort'
 export interface HeadState {
   open?: boolean
   showType: boolean
-  compact?: boolean
   sortType: ProxySortType
   filterText: string
   filterMatchCase?: boolean
@@ -23,7 +22,6 @@ const HEAD_STATE_KEY = 'proxy-head-state'
 export const DEFAULT_STATE: HeadState = {
   open: false,
   showType: true,
-  compact: false,
   sortType: 0,
   filterText: '',
   filterMatchCase: false,

@@ -5,8 +5,6 @@ import SearchOffRounded from '@mui/icons-material/SearchOffRounded'
 import SearchRounded from '@mui/icons-material/SearchRounded'
 import SortByAlphaRounded from '@mui/icons-material/SortByAlphaRounded'
 import SortRounded from '@mui/icons-material/SortRounded'
-import ViewComfyRounded from '@mui/icons-material/ViewComfyRounded'
-import ViewCozyRounded from '@mui/icons-material/ViewCozyRounded'
 import VisibilityOffRounded from '@mui/icons-material/VisibilityOffRounded'
 import VisibilityRounded from '@mui/icons-material/VisibilityRounded'
 import WifiTetheringOffRounded from '@mui/icons-material/WifiTetheringOffRounded'
@@ -52,7 +50,6 @@ export const ProxyGroupTools = memo(function ProxyGroupTools(props: Props) {
 
   const {
     showType,
-    compact,
     sortType,
     filterText,
     textState,
@@ -256,30 +253,6 @@ export const ProxyGroupTools = memo(function ProxyGroupTools(props: Props) {
           <VisibilityRounded fontSize="inherit" />
         ) : (
           <VisibilityOffRounded fontSize="inherit" />
-        )}
-      </IconButton>
-
-      <IconButton
-        size="small"
-        color="inherit"
-        title={
-          compact
-            ? t('proxies.page.tooltips.standardView')
-            : t('proxies.page.tooltips.compactView')
-        }
-        onClick={(e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          if (!headState.open)
-            // eslint-disable-next-line @eslint-react/dom-no-flush-sync
-            flushSync(() => onHeadState({ open: true }))
-          onHeadState({ compact: !compact })
-        }}
-      >
-        {compact ? (
-          <ViewCozyRounded fontSize="inherit" />
-        ) : (
-          <ViewComfyRounded fontSize="inherit" />
         )}
       </IconButton>
 

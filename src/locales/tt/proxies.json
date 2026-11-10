@@ -37,9 +37,7 @@
       "delayCheckUrl": "Задержканы тикшерү URL-ы",
       "showBasic": "Прокси турында кыскача мәгълүмат",
       "showDetail": "Прокси турында тулы мәгълүмат",
-      "filter": "Фильтр",
-      "compactView": "Кысык күренеш",
-      "standardView": "Стандарт күренеш"
+      "filter": "Фильтр"
     },
     "placeholders": {
       "delayCheckUrl": "Задержканы тикшерү URL-ы"
