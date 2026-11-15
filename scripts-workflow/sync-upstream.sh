@@ -63,4 +63,4 @@ PY
 git tag -a "$tag" -m "Fork release $tag after syncing upstream/dev"
 # The PAT triggers Fork Release; an atomic push cannot leave dev synced without a tag.
 git push --atomic origin HEAD:refs/heads/dev "refs/tags/$tag"
-printf 'Merged upstream `%s` and pushed `%s` to trigger Fork Release.\n' "$upstream" "$tag" >> "$GITHUB_STEP_SUMMARY"
+printf 'Merged upstream %s and pushed %s to trigger Fork Release.\n' "$upstream" "$tag" >> "$GITHUB_STEP_SUMMARY"
