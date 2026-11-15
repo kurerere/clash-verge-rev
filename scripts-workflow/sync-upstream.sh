@@ -23,7 +23,7 @@ if [[ "$(jq -Sc "$identity_filter" src-tauri/tauri.conf.json)" != "$identity" ]]
   exit 1
 fi
 
-new_workflows=$(git diff --name-only --diff-filter=A "$before" HEAD -- .github/workflows)
+new_workflows=$(git diff --no-renames --name-only --diff-filter=A "$before" HEAD -- .github/workflows)
 if [[ -n "$new_workflows" ]]; then
   echo '::error::New upstream workflows require manual review before syncing so upstream publishing is not enabled accidentally.'
   printf '%s\n' "$new_workflows"
