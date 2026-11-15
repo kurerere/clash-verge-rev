@@ -58,6 +58,25 @@ upstream contract; this file holds only what differs here.
 
 ## Pointers
 
+- Automatic syncing: `sync-upstream.yml` checks upstream `dev` every three days
+  at 10:17 UTC+8, anchored to 2026-11-15 (next scheduled date: 2026-11-18).
+  It uses a daily cadence gate rather than a day-of-month cron step so the
+  interval does not reset at month boundaries. GitHub may delay scheduled runs;
+  `workflow_dispatch` on `dev` bypasses the cadence gate.
+- Set the repository Actions secret `UPSTREAM_SYNC_TOKEN` to a fine-grained
+  PAT restricted to this repository, with Contents and Workflows read/write.
+  Keep Fork Release enabled. The PAT is necessary to sync upstream workflow
+  changes and trigger Fork Release from the tag push; `GITHUB_TOKEN` cannot do
+  both. Renew the PAT before it expires.
+- A successful automatic merge atomically pushes `dev` and an annotated
+  `vX.Y.Z-kure.N` tag. `N` is one greater than all existing tags for the upstream
+  base version, or 1 for a new base. No upstream changes means no tag or build.
+  Conflicts, updater identity changes, changes to Fork Release, or newly added
+  upstream workflows stop the sync without pushing anything. Review these
+  manually, including disabling new upstream publishing workflows, then merge
+  and release using the manual procedure below. Failed builds can be rerun from
+  the Fork Release run; a sync rerun does not tag an already-merged upstream.
+
 - Syncing upstream: remote `upstream` is fetch-only; `git fetch upstream && git merge upstream/dev`.
   On conflicts, keep the fork's values for the updater config, the release
   link in `update-viewer.tsx` and the version regex in `scripts/release-version.mjs`.
