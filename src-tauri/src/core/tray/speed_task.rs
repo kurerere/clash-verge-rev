@@ -1,7 +1,10 @@
 use crate::core::handle;
 use crate::process::AsyncHandler;
-use crate::utils::{connections_stream, tray_speed};
+use crate::utils::connections_stream;
+#[cfg(target_os = "macos")]
+use crate::utils::tray_speed;
 use crate::{Type, logging};
+use anyhow::Result;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,17 +14,24 @@ use tauri_plugin_mihomo::models::WsConnectionId;
 const TRAY_SPEED_RETRY_DELAY: Duration = Duration::from_secs(1);
 const TRAY_SPEED_STALE_TIMEOUT: Duration = Duration::from_secs(5);
 
+struct SpeedTask {
+    handle: JoinHandle<()>,
+    connection_id: Arc<Mutex<Option<WsConnectionId>>>,
+}
+
 #[derive(Clone)]
 pub struct TraySpeedController {
-    speed_task: Arc<Mutex<Option<JoinHandle<()>>>>,
-    speed_connection_id: Arc<Mutex<Option<WsConnectionId>>>,
+    speed_task: Arc<Mutex<Option<SpeedTask>>>,
+    #[cfg(target_os = "windows")]
+    display: Arc<Mutex<Option<super::windows_speed::TaskbarSpeedDisplay>>>,
 }
 
 impl Default for TraySpeedController {
     fn default() -> Self {
         Self {
             speed_task: Arc::new(Mutex::new(None)),
-            speed_connection_id: Arc::new(Mutex::new(None)),
+            #[cfg(target_os = "windows")]
+            display: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -31,31 +41,48 @@ impl TraySpeedController {
         Self::default()
     }
 
-    pub fn update_task(&self, enable_tray_speed: bool) {
+    pub fn update_task(&self, enable_tray_speed: bool) -> Result<()> {
         if enable_tray_speed {
-            self.start_task();
+            self.start_task()?;
         } else {
             self.stop_task();
         }
+        Ok(())
     }
 
-    fn start_task(&self) {
+    fn start_task(&self) -> Result<()> {
         if handle::Handle::global().is_exiting() {
-            return;
+            return Ok(());
         }
 
         if !Self::has_main_tray() {
             logging!(warn, Type::Tray, "托盘不可用，跳过启动托盘速率任务");
-            return;
+            return Ok(());
         }
 
         let mut guard = self.speed_task.lock();
-        if guard.as_ref().is_some_and(|task| !task.inner().is_finished()) {
-            return;
+        if guard.as_ref().is_some_and(|task| !task.handle.inner().is_finished()) {
+            return Ok(());
         }
 
-        let speed_connection_id = Arc::clone(&self.speed_connection_id);
+        #[cfg(target_os = "windows")]
+        {
+            self.display.lock().take();
+            *self.display.lock() = Some(super::windows_speed::TaskbarSpeedDisplay::new()?);
+        }
+        #[cfg(target_os = "windows")]
+        let display = Arc::clone(&self.display);
+        let connection_id = Arc::new(Mutex::new(None));
+        let speed_connection_id = Arc::clone(&connection_id);
         let task = AsyncHandler::spawn(move || async move {
+            let apply_speed = |up, down| {
+                #[cfg(target_os = "macos")]
+                Self::apply_tray_speed(up, down);
+                #[cfg(target_os = "windows")]
+                if let Some(display) = display.lock().as_ref() {
+                    display.set_speed(up, down);
+                }
+            };
             loop {
                 if handle::Handle::global().is_exiting() {
                     break;
@@ -71,7 +98,7 @@ impl TraySpeedController {
                     Ok(stream) => stream,
                     Err(err) => {
                         logging!(debug, Type::Tray, "托盘速率流连接失败，稍后重试: {err}");
-                        Self::apply_tray_speed(0, 0);
+                        apply_speed(0, 0);
                         tokio::time::sleep(TRAY_SPEED_RETRY_DELAY).await;
                         continue;
                     }
@@ -86,11 +113,11 @@ impl TraySpeedController {
 
                     match next_state {
                         connections_stream::StreamConsumeState::Event(speed_event) => {
-                            Self::apply_tray_speed(speed_event.up, speed_event.down);
+                            apply_speed(speed_event.up, speed_event.down);
                         }
                         connections_stream::StreamConsumeState::Stale => {
                             logging!(debug, Type::Tray, "托盘速率流长时间未收到有效数据，触发重连");
-                            Self::apply_tray_speed(0, 0);
+                            apply_speed(0, 0);
                             break;
                         }
                         connections_stream::StreamConsumeState::Closed
@@ -107,29 +134,43 @@ impl TraySpeedController {
                 }
 
                 // `Stale` already reset the display; this covers remote close.
-                Self::apply_tray_speed(0, 0);
+                apply_speed(0, 0);
                 tokio::time::sleep(TRAY_SPEED_RETRY_DELAY).await;
             }
 
             Self::set_speed_connection_id(&speed_connection_id, None);
         });
 
-        *guard = Some(task);
+        *guard = Some(SpeedTask {
+            handle: task,
+            connection_id,
+        });
+        Ok(())
     }
 
     fn stop_task(&self) {
         let task = self.speed_task.lock().take();
-        let speed_connection_id = Arc::clone(&self.speed_connection_id);
+        if let Some(task) = task.as_ref() {
+            task.handle.abort();
+        }
 
         AsyncHandler::spawn(move || async move {
             // Await abort before disconnect so the task cannot consume and lose the connection ID.
             if let Some(task) = task {
-                task.abort();
-                let _ = task.await;
+                let _ = task.handle.await;
+                Self::disconnect_speed_connection(&task.connection_id).await;
             }
-            Self::disconnect_speed_connection(&speed_connection_id).await;
         });
 
+        #[cfg(target_os = "windows")]
+        self.display.lock().take();
+
+        #[cfg(target_os = "macos")]
+        Self::clear_tray_speed();
+    }
+
+    #[cfg(target_os = "macos")]
+    fn clear_tray_speed() {
         let app_handle = handle::Handle::app_handle();
         if let Some(tray) = app_handle.tray_by_id(super::TRAY_ID) {
             let result = tray.with_inner_tray_icon(|inner| {
@@ -164,6 +205,7 @@ impl TraySpeedController {
         }
     }
 
+    #[cfg(target_os = "macos")]
     fn apply_tray_speed(up: u64, down: u64) {
         let app_handle = handle::Handle::app_handle();
         if let Some(tray) = app_handle.tray_by_id(super::TRAY_ID) {
