@@ -1,5 +1,5 @@
 use crate::utils::speed::format_bytes_per_second;
-use anyhow::{Context, Result, bail};
+use anyhow::{Context as _, Result, bail};
 use parking_lot::Mutex;
 use std::ptr::{null, null_mut};
 use std::sync::{
@@ -390,6 +390,7 @@ fn paint(window: HWND) {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 

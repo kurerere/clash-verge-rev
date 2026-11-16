@@ -145,6 +145,7 @@ impl TraySpeedController {
             handle: task,
             connection_id,
         });
+        drop(guard);
         Ok(())
     }
 
