@@ -409,7 +409,7 @@ export const LayoutViewer = forwardRef<DialogRef>((_, ref) => {
             </GuardState>
           </Item>
         )}
-        {OS === 'macos' && (
+        {(OS === 'macos' || OS === 'windows') && (
           <Item data-setting-target="settings.components.verge.layout.fields.enableTraySpeed">
             <ListItemText
               primary={t(

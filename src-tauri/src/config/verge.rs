@@ -205,7 +205,7 @@ pub struct IVerge {
     #[specta(type = Option<std::string::String>)]
     pub webdav_password: Option<String>,
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub enable_tray_speed: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -412,7 +412,7 @@ impl IVerge {
             webdav_url: None,
             webdav_username: None,
             webdav_password: None,
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             enable_tray_speed: Some(false),
             tray_proxy_groups_display_mode: Some("default".into()),
             tray_inline_outbound_modes: Some(false),
@@ -507,7 +507,7 @@ impl IVerge {
         patch_opt_field!(self, patch, webdav_url);
         patch_opt_field!(self, patch, webdav_username);
         patch_opt_field!(self, patch, webdav_password);
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         patch_opt_field!(self, patch, enable_tray_speed);
         patch_opt_field!(self, patch, tray_proxy_groups_display_mode);
         patch_opt_field!(self, patch, tray_inline_outbound_modes);
