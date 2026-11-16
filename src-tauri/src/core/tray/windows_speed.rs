@@ -19,13 +19,17 @@ use windows_sys::Win32::{
     },
     System::LibraryLoader::GetModuleHandleW,
     UI::{
+        Controls::{
+            BPBF_TOPDOWNDIB, BeginBufferedPaint, BufferedPaintInit, BufferedPaintSetAlpha, BufferedPaintUnInit,
+            EndBufferedPaint,
+        },
         HiDpi::GetDpiForWindow,
         WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, FindWindowExW, FindWindowW,
             GetClientRect, GetWindowRect, GetWindowTextW, IsWindow, MA_NOACTIVATE, MSG, PM_REMOVE, PeekMessageW,
             RegisterClassW, SW_HIDE, SWP_NOACTIVATE, SWP_NOZORDER, SWP_SHOWWINDOW, SetWindowPos, SetWindowTextW,
-            ShowWindow, TranslateMessage, WM_ERASEBKGND, WM_MOUSEACTIVATE, WM_PAINT, WNDCLASSW, WS_CHILD,
-            WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+            ShowWindow, TranslateMessage, WM_CREATE, WM_ERASEBKGND, WM_MOUSEACTIVATE, WM_NCDESTROY, WM_PAINT,
+            WNDCLASSW, WS_CHILD, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
         },
     },
 };
@@ -321,6 +325,14 @@ fn position(window: HWND, rect: RECT, flags: u32) -> bool {
 unsafe extern "system" fn window_proc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     unsafe {
         match message {
+            WM_CREATE => {
+                BufferedPaintInit();
+                0
+            }
+            WM_NCDESTROY => {
+                BufferedPaintUnInit();
+                DefWindowProcW(window, message, wparam, lparam)
+            }
             WM_PAINT => {
                 paint(window);
                 0
@@ -335,9 +347,15 @@ unsafe extern "system" fn window_proc(window: HWND, message: u32, wparam: WPARAM
 fn paint(window: HWND) {
     unsafe {
         let mut paint: PAINTSTRUCT = std::mem::zeroed();
-        let dc = BeginPaint(window, &mut paint);
+        let target = BeginPaint(window, &mut paint);
         let mut bounds: RECT = std::mem::zeroed();
         GetClientRect(window, &mut bounds);
+        let mut dc = null_mut();
+        let buffer = BeginBufferedPaint(target, &bounds, BPBF_TOPDOWNDIB, null(), &mut dc);
+        if buffer == 0 {
+            EndPaint(window, &paint);
+            return;
+        }
         let light = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
             .open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize")
             .and_then(|key| key.get_value::<u32, _>("SystemUsesLightTheme"))
@@ -385,6 +403,9 @@ fn paint(window: HWND) {
         }
         SelectObject(dc, old_font);
         DeleteObject(font);
+        // GDI leaves alpha unset; glass taskbars otherwise blend dark text into their light background.
+        BufferedPaintSetAlpha(buffer, null(), 255);
+        EndBufferedPaint(buffer, 1);
         EndPaint(window, &paint);
     }
 }
