@@ -26,10 +26,11 @@ use windows_sys::Win32::{
         HiDpi::GetDpiForWindow,
         WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, FindWindowExW, FindWindowW,
-            GetClientRect, GetWindowRect, GetWindowTextW, IsWindow, MA_NOACTIVATE, MSG, PM_REMOVE, PeekMessageW,
-            RegisterClassW, SW_HIDE, SWP_NOACTIVATE, SWP_NOZORDER, SWP_SHOWWINDOW, SetWindowPos, SetWindowTextW,
-            ShowWindow, TranslateMessage, WM_CREATE, WM_ERASEBKGND, WM_MOUSEACTIVATE, WM_NCDESTROY, WM_PAINT,
-            WNDCLASSW, WS_CHILD, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+            GetClientRect, GetWindowRect, GetWindowTextW, IsWindow, LWA_ALPHA, MA_NOACTIVATE, MSG, PM_REMOVE,
+            PeekMessageW, RegisterClassW, SW_HIDE, SWP_NOACTIVATE, SWP_NOZORDER, SWP_SHOWWINDOW,
+            SetLayeredWindowAttributes, SetWindowPos, SetWindowTextW, ShowWindow, TranslateMessage, WM_CREATE,
+            WM_ERASEBKGND, WM_MOUSEACTIVATE, WM_NCDESTROY, WM_PAINT, WNDCLASSW, WS_CHILD, WS_EX_LAYERED,
+            WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
         },
     },
 };
@@ -164,7 +165,7 @@ impl TaskbarWindow {
                 self.detach();
                 self.parent = parent;
                 self.window = CreateWindowExW(
-                    WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
+                    WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | if parent == taskbar { WS_EX_LAYERED } else { 0 },
                     w!("ClashVergeTaskbarSpeed"),
                     w!(""),
                     WS_CHILD,
@@ -179,6 +180,12 @@ impl TaskbarWindow {
                 );
                 if self.window.is_null() {
                     return Err(std::io::Error::last_os_error()).context("CreateWindowExW failed");
+                }
+                // XAML taskbars need a separate layer to compose the GDI child window.
+                if parent == taskbar && SetLayeredWindowAttributes(self.window, 0, 255, LWA_ALPHA) == 0 {
+                    let error = std::io::Error::last_os_error();
+                    self.detach();
+                    return Err(error).context("SetLayeredWindowAttributes failed for the speed display");
                 }
                 self.text.clear();
             }
@@ -455,6 +462,46 @@ fn paint(window: HWND) {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn executable_manifest_allows_layered_child_windows() {
+        unsafe {
+            let module = GetModuleHandleW(null());
+            let parent = CreateWindowExW(
+                0,
+                w!("STATIC"),
+                w!(""),
+                0,
+                0,
+                0,
+                100,
+                40,
+                null_mut(),
+                null_mut(),
+                module,
+                null(),
+            );
+            assert!(!parent.is_null());
+            let child = CreateWindowExW(
+                WS_EX_LAYERED,
+                w!("STATIC"),
+                w!(""),
+                WS_CHILD,
+                0,
+                0,
+                100,
+                40,
+                parent,
+                null_mut(),
+                module,
+                null(),
+            );
+            let initialized = !child.is_null() && SetLayeredWindowAttributes(child, 0, 255, LWA_ALPHA) != 0;
+            let error = std::io::Error::last_os_error();
+            DestroyWindow(parent);
+            assert!(initialized, "Layered child initialization failed: {error}");
+        }
+    }
 
     #[test]
     fn modern_taskbar_does_not_use_the_legacy_rebar_container() {
