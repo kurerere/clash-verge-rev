@@ -10,27 +10,28 @@ use std::sync::{
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use windows_sys::Win32::{
-    Foundation::{ERROR_CLASS_ALREADY_EXISTS, GetLastError, HWND, LPARAM, LRESULT, RECT, WPARAM},
+    Foundation::{ERROR_CLASS_ALREADY_EXISTS, GetLastError, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM},
     Graphics::Gdi::{
-        BeginPaint, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateSolidBrush, DEFAULT_CHARSET,
-        DEFAULT_PITCH, DT_CENTER, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, EndPaint,
-        FF_DONTCARE, FW_NORMAL, FillRect, InvalidateRect, MapWindowPoints, OUT_DEFAULT_PRECIS, PAINTSTRUCT,
-        SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+        AC_SRC_ALPHA, AC_SRC_OVER, ANTIALIASED_QUALITY, BLENDFUNCTION, BeginPaint, CLIP_DEFAULT_PRECIS, CreateFontW,
+        CreateSolidBrush, DEFAULT_CHARSET, DEFAULT_PITCH, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE, DT_VCENTER,
+        DeleteObject, DrawTextW, EndPaint, FF_DONTCARE, FW_NORMAL, FillRect, GdiFlush, GetDC, HDC, InvalidateRect,
+        MapWindowPoints, OUT_DEFAULT_PRECIS, PAINTSTRUCT, RGBQUAD, ReleaseDC, SelectObject, SetBkMode, SetTextColor,
+        TRANSPARENT,
     },
     System::LibraryLoader::GetModuleHandleW,
     UI::{
         Controls::{
             BPBF_TOPDOWNDIB, BeginBufferedPaint, BufferedPaintInit, BufferedPaintSetAlpha, BufferedPaintUnInit,
-            EndBufferedPaint,
+            EndBufferedPaint, GetBufferedPaintBits,
         },
         HiDpi::GetDpiForWindow,
         WindowsAndMessaging::{
-            CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, FindWindowExW, FindWindowW,
-            GetClientRect, GetWindowRect, GetWindowTextW, IsWindow, LWA_ALPHA, MA_NOACTIVATE, MSG, PM_REMOVE,
-            PeekMessageW, RegisterClassW, SW_HIDE, SWP_NOACTIVATE, SWP_NOZORDER, SWP_SHOWWINDOW,
-            SetLayeredWindowAttributes, SetWindowPos, SetWindowTextW, ShowWindow, TranslateMessage, WM_CREATE,
-            WM_ERASEBKGND, WM_MOUSEACTIVATE, WM_NCDESTROY, WM_PAINT, WNDCLASSW, WS_CHILD, WS_EX_LAYERED,
-            WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+            CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, FindWindowExW, FindWindowW, GWL_EXSTYLE,
+            GetClientRect, GetWindowLongPtrW, GetWindowRect, GetWindowTextW, IsWindow, MA_NOACTIVATE, MSG, PM_REMOVE,
+            PeekMessageW, RegisterClassW, SW_HIDE, SWP_NOACTIVATE, SWP_NOZORDER, SWP_SHOWWINDOW, SetWindowPos,
+            SetWindowTextW, ShowWindow, TranslateMessage, ULW_ALPHA, UpdateLayeredWindow, WM_CREATE, WM_ERASEBKGND,
+            WM_MOUSEACTIVATE, WM_NCDESTROY, WM_PAINT, WNDCLASSW, WS_CHILD, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+            WS_EX_TOOLWINDOW,
         },
     },
 };
@@ -181,12 +182,6 @@ impl TaskbarWindow {
                 if self.window.is_null() {
                     return Err(std::io::Error::last_os_error()).context("CreateWindowExW failed");
                 }
-                // XAML taskbars need a separate layer to compose the GDI child window.
-                if parent == taskbar && SetLayeredWindowAttributes(self.window, 0, 255, LWA_ALPHA) == 0 {
-                    let error = std::io::Error::last_os_error();
-                    self.detach();
-                    return Err(error).context("SetLayeredWindowAttributes failed for the speed display");
-                }
                 self.text.clear();
             }
 
@@ -243,7 +238,11 @@ impl TaskbarWindow {
                 SetWindowTextW(self.window, wide.as_ptr());
                 self.text = text;
             }
-            InvalidateRect(self.window, null(), 0);
+            if parent == taskbar {
+                paint_layered(self.window)?;
+            } else {
+                InvalidateRect(self.window, null(), 0);
+            }
             Ok(())
         }
     }
@@ -392,10 +391,27 @@ unsafe extern "system" fn window_proc(window: HWND, message: u32, wparam: WPARAM
     }
 }
 
+fn theme_colors() -> (u32, u32) {
+    let light = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
+        .open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize")
+        .and_then(|key| key.get_value::<u32, _>("SystemUsesLightTheme"))
+        .unwrap_or(0)
+        != 0;
+    if light {
+        (0x00f3f3f3, 0x00181818)
+    } else {
+        (0x00202020, 0x00ffffff)
+    }
+}
+
 fn paint(window: HWND) {
     unsafe {
         let mut paint: PAINTSTRUCT = std::mem::zeroed();
         let target = BeginPaint(window, &mut paint);
+        if GetWindowLongPtrW(window, GWL_EXSTYLE) as u32 & WS_EX_LAYERED != 0 {
+            EndPaint(window, &paint);
+            return;
+        }
         let mut bounds: RECT = std::mem::zeroed();
         GetClientRect(window, &mut bounds);
         let mut dc = null_mut();
@@ -404,18 +420,90 @@ fn paint(window: HWND) {
             EndPaint(window, &paint);
             return;
         }
-        let light = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
-            .open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize")
-            .and_then(|key| key.get_value::<u32, _>("SystemUsesLightTheme"))
-            .unwrap_or(0)
-            != 0;
-        let brush = CreateSolidBrush(if light { 0x00f3f3f3 } else { 0x00202020 });
+        let (background, foreground) = theme_colors();
+        draw_content(window, dc, bounds, background, foreground);
+        // GDI leaves alpha unset; glass taskbars otherwise blend dark text into their light background.
+        BufferedPaintSetAlpha(buffer, null(), 255);
+        EndBufferedPaint(buffer, 1);
+        EndPaint(window, &paint);
+    }
+}
+
+fn paint_layered(window: HWND) -> Result<()> {
+    unsafe {
+        let mut bounds: RECT = std::mem::zeroed();
+        if GetClientRect(window, &mut bounds) == 0 {
+            return Err(std::io::Error::last_os_error()).context("Could not read the speed display bounds");
+        }
+        let screen = GetDC(null_mut());
+        if screen.is_null() {
+            bail!("Could not get a screen device context for taskbar drawing");
+        }
+        let mut dc = null_mut();
+        let buffer = BeginBufferedPaint(screen, &bounds, BPBF_TOPDOWNDIB, null(), &mut dc);
+        if buffer == 0 {
+            ReleaseDC(null_mut(), screen);
+            bail!("Could not create the taskbar drawing buffer");
+        }
+        let result = (|| {
+            // Grayscale glyph coverage avoids ClearType fringes on the transparent taskbar surface.
+            draw_content(window, dc, bounds, 0, 0x00ffffff);
+            GdiFlush();
+            let mut bits = null_mut();
+            let mut stride = 0;
+            if GetBufferedPaintBits(buffer, &mut bits, &mut stride) < 0 || bits.is_null() || stride < bounds.right {
+                bail!("Could not read the taskbar drawing buffer pixels");
+            }
+            let (_, foreground) = theme_colors();
+            for y in 0..bounds.bottom {
+                for x in 0..bounds.right {
+                    let pixel = &mut *bits.add((y * stride + x) as usize);
+                    *pixel = glyph_pixel(pixel.rgbRed, foreground);
+                }
+            }
+            let size = SIZE {
+                cx: bounds.right,
+                cy: bounds.bottom,
+            };
+            let source = POINT { x: 0, y: 0 };
+            let blend = BLENDFUNCTION {
+                BlendOp: AC_SRC_OVER as u8,
+                BlendFlags: 0,
+                SourceConstantAlpha: 255,
+                AlphaFormat: AC_SRC_ALPHA as u8,
+            };
+            if UpdateLayeredWindow(window, screen, null(), &size, dc, &source, 0, &blend, ULW_ALPHA) == 0 {
+                return Err(std::io::Error::last_os_error())
+                    .context("UpdateLayeredWindow failed for the speed display");
+            }
+            Ok(())
+        })();
+        EndBufferedPaint(buffer, 0);
+        ReleaseDC(null_mut(), screen);
+        result
+    }
+}
+
+fn glyph_pixel(coverage: u8, foreground: u32) -> RGBQUAD {
+    let alpha = u32::from(coverage);
+    RGBQUAD {
+        rgbRed: ((foreground & 0xff) * alpha / 255) as u8,
+        rgbGreen: (((foreground >> 8) & 0xff) * alpha / 255) as u8,
+        rgbBlue: (((foreground >> 16) & 0xff) * alpha / 255) as u8,
+        rgbReserved: coverage,
+    }
+}
+
+fn draw_content(window: HWND, dc: HDC, bounds: RECT, background: u32, foreground: u32) {
+    unsafe {
+        let brush = CreateSolidBrush(background);
         FillRect(dc, &bounds, brush);
         DeleteObject(brush);
         SetBkMode(dc, TRANSPARENT as i32);
-        SetTextColor(dc, if light { 0x00181818 } else { 0x00ffffff });
+        SetTextColor(dc, foreground);
+        let dpi = GetDpiForWindow(window).max(96) as i32;
         let font = CreateFontW(
-            -(11 * GetDpiForWindow(window).max(96) as i32 / 96),
+            -(12 * dpi / 96),
             0,
             0,
             0,
@@ -426,7 +514,7 @@ fn paint(window: HWND) {
             DEFAULT_CHARSET as u32,
             OUT_DEFAULT_PRECIS as u32,
             CLIP_DEFAULT_PRECIS as u32,
-            CLEARTYPE_QUALITY as u32,
+            ANTIALIASED_QUALITY as u32,
             (DEFAULT_PITCH | FF_DONTCARE) as u32,
             w!("Segoe UI"),
         );
@@ -434,27 +522,38 @@ fn paint(window: HWND) {
         let mut text = [0u16; 128];
         let length = GetWindowTextW(window, text.as_mut_ptr(), text.len() as i32) as usize;
         let middle = bounds.bottom / 2;
+        let padding = 6 * dpi / 96;
+        let arrow_right = padding + 12 * dpi / 96;
+        let unit_left = bounds.right - padding - 24 * dpi / 96;
+        let gap = 4 * dpi / 96;
         for (index, line) in text[..length].split(|ch| *ch == 10).take(2).enumerate() {
-            let mut rect = RECT {
-                left: 0,
-                right: bounds.right,
-                top: index as i32 * middle,
-                bottom: (index as i32 + 1) * middle,
-            };
-            DrawTextW(
-                dc,
-                line.as_ptr(),
-                line.len() as i32,
-                &mut rect,
-                DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
-            );
+            if line.len() < 4 {
+                continue;
+            }
+            // The shared formatter's units are all three characters (B/s, K/s, M/s, G/s, T/s).
+            let unit_start = line.len() - 3;
+            for (part, left, right, align) in [
+                (&line[..1], padding, arrow_right, DT_LEFT),
+                (&line[1..unit_start], arrow_right + gap, unit_left - gap, DT_RIGHT),
+                (&line[unit_start..], unit_left, bounds.right - padding, DT_LEFT),
+            ] {
+                let mut rect = RECT {
+                    left,
+                    right,
+                    top: index as i32 * middle,
+                    bottom: (index as i32 + 1) * middle,
+                };
+                DrawTextW(
+                    dc,
+                    part.as_ptr(),
+                    part.len() as i32,
+                    &mut rect,
+                    align | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
+                );
+            }
         }
         SelectObject(dc, old_font);
         DeleteObject(font);
-        // GDI leaves alpha unset; glass taskbars otherwise blend dark text into their light background.
-        BufferedPaintSetAlpha(buffer, null(), 255);
-        EndBufferedPaint(buffer, 1);
-        EndPaint(window, &paint);
     }
 }
 
@@ -462,6 +561,21 @@ fn paint(window: HWND) {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn glyph_alpha_has_no_opaque_background_or_color_fringe() {
+        for coverage in [0, 128, 255] {
+            let light = glyph_pixel(coverage, 0x00181818);
+            let dark = glyph_pixel(coverage, 0x00ffffff);
+            assert_eq!(light.rgbReserved, coverage);
+            assert_eq!(light.rgbRed, (24 * u32::from(coverage) / 255) as u8);
+            assert_eq!((light.rgbRed, light.rgbRed), (light.rgbGreen, light.rgbBlue));
+            assert_eq!(
+                (dark.rgbRed, dark.rgbGreen, dark.rgbBlue, dark.rgbReserved),
+                (coverage, coverage, coverage, coverage)
+            );
+        }
+    }
 
     #[test]
     fn executable_manifest_allows_layered_child_windows() {
@@ -485,7 +599,7 @@ mod tests {
             let child = CreateWindowExW(
                 WS_EX_LAYERED,
                 w!("STATIC"),
-                w!(""),
+                w!("↑ 1.0M/s\n↓ 2.0M/s"),
                 WS_CHILD,
                 0,
                 0,
@@ -496,10 +610,11 @@ mod tests {
                 module,
                 null(),
             );
-            let initialized = !child.is_null() && SetLayeredWindowAttributes(child, 0, 255, LWA_ALPHA) != 0;
-            let error = std::io::Error::last_os_error();
+            BufferedPaintInit();
+            let rendered = paint_layered(child);
+            BufferedPaintUnInit();
             DestroyWindow(parent);
-            assert!(initialized, "Layered child initialization failed: {error}");
+            assert!(rendered.is_ok(), "Layered child rendering failed: {rendered:?}");
         }
     }
 
