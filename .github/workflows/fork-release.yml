@@ -121,12 +121,13 @@ jobs:
         run: |
           gh release download "$GITHUB_REF_NAME" -p latest.json -R "${{ github.repository }}"
           # Clients disable the update action when the manifest notes are empty.
-          jq '.notes |= (if . == null or . == "" then "Fork build of \(.version)" else . end)' \
-            latest.json > patched.json && mv patched.json latest.json
+          jq '.notes = (if .notes == null or .notes == "" then "Fork build of \(.version)" else .notes end)' \
+            latest.json > patched.json
+          mv patched.json latest.json
           gh release upload "$GITHUB_REF_NAME" latest.json --clobber -R "${{ github.repository }}"
           if ! jq -e --arg version "${GITHUB_REF_NAME#v}" \
-            '.version == $version and (.platforms | has("windows-x86_64") and has("darwin-aarch64"))' latest.json > /dev/null; then
-            echo "::error::Updater manifest is missing a platform or has the wrong version."
+            '.version == $version and (.notes | type == "string" and length > 0) and (.platforms | has("windows-x86_64") and has("darwin-aarch64"))' latest.json > /dev/null; then
+            echo "::error::Updater manifest has an invalid version, empty notes, or a missing platform."
             exit 1
           fi
           gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease=false --latest -R "${{ github.repository }}"
