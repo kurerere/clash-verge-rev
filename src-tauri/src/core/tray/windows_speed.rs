@@ -10,7 +10,7 @@ use std::sync::{
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use windows_sys::Win32::{
-    Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
+    Foundation::{ERROR_CLASS_ALREADY_EXISTS, GetLastError, HWND, LPARAM, LRESULT, RECT, WPARAM},
     Graphics::Gdi::{
         BeginPaint, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateSolidBrush, DEFAULT_CHARSET,
         DEFAULT_PITCH, DT_CENTER, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, EndPaint,
@@ -63,8 +63,11 @@ impl TaskbarSpeedDisplay {
                 return;
             }
             while !shared.stopped.load(Ordering::Acquire) {
-                window.refresh(*shared.speed.lock());
+                let attached = window.refresh(*shared.speed.lock()).is_ok();
                 unsafe {
+                    if !attached {
+                        ShowWindow(window.window, SW_HIDE);
+                    }
                     let mut message: MSG = std::mem::zeroed();
                     while PeekMessageW(&mut message, null_mut(), 0, 0, PM_REMOVE) != 0 {
                         TranslateMessage(&message);
@@ -130,7 +133,12 @@ impl TaskbarWindow {
                 lpszClassName: w!("ClashVergeTaskbarSpeed"),
                 ..std::mem::zeroed()
             };
-            RegisterClassW(&class);
+            if RegisterClassW(&class) == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS {
+                bail!(
+                    "Could not register the taskbar speed window class: {}",
+                    std::io::Error::last_os_error()
+                );
+            }
         }
         let mut window = Self {
             window: null_mut(),
@@ -138,21 +146,20 @@ impl TaskbarWindow {
             reservation: None,
             text: String::new(),
         };
-        if !window.refresh((0, 0)) {
-            bail!("Could not attach the speed display to the Windows taskbar");
+        if let Err(error) = window.refresh((0, 0)) {
+            bail!("Could not attach the speed display to the Windows taskbar: {error:#}");
         }
         Ok(window)
     }
 
-    fn refresh(&mut self, speed: (u64, u64)) -> bool {
+    fn refresh(&mut self, speed: (u64, u64)) -> Result<()> {
         unsafe {
             let taskbar = FindWindowW(w!("Shell_TrayWnd"), null());
             if taskbar.is_null() {
                 self.detach();
-                return false;
+                bail!("Shell_TrayWnd was not found");
             }
-            let rebar = FindWindowExW(taskbar, null_mut(), w!("ReBarWindow32"), null());
-            let parent = if rebar.is_null() { taskbar } else { rebar };
+            let parent = taskbar_parent(taskbar);
             if parent != self.parent || IsWindow(self.window) == 0 {
                 self.detach();
                 self.parent = parent;
@@ -171,7 +178,7 @@ impl TaskbarWindow {
                     null(),
                 );
                 if self.window.is_null() {
-                    return false;
+                    return Err(std::io::Error::last_os_error()).context("CreateWindowExW failed");
                 }
                 self.text.clear();
             }
@@ -179,32 +186,46 @@ impl TaskbarWindow {
             let dpi = GetDpiForWindow(taskbar).max(96) as i32;
             let mut bounds: RECT = std::mem::zeroed();
             if GetClientRect(parent, &mut bounds) == 0 {
-                return false;
+                return Err(std::io::Error::last_os_error()).context("GetClientRect failed for the taskbar parent");
+            }
+            if bounds.right <= 0 || bounds.bottom <= 0 {
+                bail!(
+                    "The taskbar parent has empty bounds ({}x{})",
+                    bounds.right,
+                    bounds.bottom
+                );
             }
             let width = 92 * dpi / 96;
             let height = (32 * dpi / 96).min(bounds.bottom);
-            let area = if rebar.is_null() {
+            let area = if parent == taskbar {
                 let notify = FindWindowExW(taskbar, null_mut(), w!("TrayNotifyWnd"), null());
-                rect_in(notify, parent).and_then(|notify| {
-                    (notify.left >= width).then_some(RECT {
-                        left: notify.left - width,
-                        right: notify.left,
-                        top: (bounds.bottom - height) / 2,
-                        bottom: (bounds.bottom + height) / 2,
-                    })
-                })
-            } else {
-                let mut list = FindWindowExW(rebar, null_mut(), w!("MSTaskSwWClass"), null());
-                if list.is_null() {
-                    list = FindWindowExW(rebar, null_mut(), w!("MSTaskListWClass"), null());
+                let notify =
+                    rect_in(notify, parent).context("Could not read notification area bounds (TrayNotifyWnd)")?;
+                if notify.right <= notify.left || notify.bottom <= notify.top {
+                    bail!("The notification area (TrayNotifyWnd) has empty bounds");
                 }
-                self.reserve(list, bounds, width, height)
+                if notify.left < width {
+                    bail!(
+                        "Not enough space before the notification area ({}px available, {width}px required)",
+                        notify.left
+                    );
+                }
+                RECT {
+                    left: notify.left - width,
+                    right: notify.left,
+                    top: (bounds.bottom - height) / 2,
+                    bottom: (bounds.bottom + height) / 2,
+                }
+            } else {
+                let mut list = FindWindowExW(parent, null_mut(), w!("MSTaskSwWClass"), null());
+                if list.is_null() {
+                    list = FindWindowExW(parent, null_mut(), w!("MSTaskListWClass"), null());
+                }
+                self.reserve(list, bounds, width, height)?
             };
-            let Some(area) = area else {
-                ShowWindow(self.window, SW_HIDE);
-                return false;
-            };
-            position(self.window, area, SWP_SHOWWINDOW | SWP_NOACTIVATE);
+            if !position(self.window, area, SWP_SHOWWINDOW | SWP_NOACTIVATE) {
+                return Err(std::io::Error::last_os_error()).context("SetWindowPos failed for the speed display");
+            }
             let text = format!(
                 "↑ {}\n↓ {}",
                 format_bytes_per_second(speed.0),
@@ -216,12 +237,13 @@ impl TaskbarWindow {
                 self.text = text;
             }
             InvalidateRect(self.window, null(), 0);
-            true
+            Ok(())
         }
     }
 
-    fn reserve(&mut self, list: HWND, bounds: RECT, width: i32, height: i32) -> Option<RECT> {
-        let current = rect_in(list, self.parent)?;
+    fn reserve(&mut self, list: HWND, bounds: RECT, width: i32, height: i32) -> Result<RECT> {
+        let current = rect_in(list, self.parent)
+            .context("Could not read classic task-list bounds (MSTaskSwWClass/MSTaskListWClass)")?;
         let horizontal = bounds.right >= bounds.bottom;
         let unchanged = self.reservation.as_ref().is_some_and(|reservation| {
             reservation.window == list
@@ -234,21 +256,21 @@ impl TaskbarWindow {
         });
         if !unchanged {
             self.reservation.take();
-            let original = rect_in(list, self.parent)?;
+            let original = rect_in(list, self.parent).context("Could not read restored classic task-list bounds")?;
             let mut reserved = original;
             if horizontal {
                 if original.right - original.left < width * 2 {
-                    return None;
+                    bail!("The classic task list is too narrow to reserve {width}px");
                 }
                 reserved.right -= width;
             } else {
                 if original.bottom - original.top < height * 2 {
-                    return None;
+                    bail!("The classic task list is too short to reserve {height}px");
                 }
                 reserved.bottom -= height;
             }
             if !position(list, reserved, SWP_NOZORDER | SWP_NOACTIVATE) {
-                return None;
+                return Err(std::io::Error::last_os_error()).context("SetWindowPos failed for the classic task list");
             }
             self.reservation = Some(Reservation {
                 window: list,
@@ -257,8 +279,11 @@ impl TaskbarWindow {
                 reserved,
             });
         }
-        let reservation = self.reservation.as_ref()?;
-        Some(if horizontal {
+        let reservation = self
+            .reservation
+            .as_ref()
+            .context("The classic task-list reservation is missing")?;
+        Ok(if horizontal {
             RECT {
                 left: reservation.reserved.right,
                 right: reservation.original.right,
@@ -290,6 +315,22 @@ impl TaskbarWindow {
 impl Drop for TaskbarWindow {
     fn drop(&mut self) {
         self.detach();
+    }
+}
+
+fn taskbar_parent(taskbar: HWND) -> HWND {
+    unsafe {
+        let bridge = FindWindowExW(
+            taskbar,
+            null_mut(),
+            w!("Windows.UI.Composition.DesktopWindowContentBridge"),
+            null(),
+        );
+        if !bridge.is_null() {
+            return taskbar;
+        }
+        let rebar = FindWindowExW(taskbar, null_mut(), w!("ReBarWindow32"), null());
+        if rebar.is_null() { taskbar } else { rebar }
     }
 }
 
@@ -414,6 +455,68 @@ fn paint(window: HWND) {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn modern_taskbar_does_not_use_the_legacy_rebar_container() {
+        unsafe {
+            let module = GetModuleHandleW(null());
+            for name in [
+                w!("ReBarWindow32"),
+                w!("Windows.UI.Composition.DesktopWindowContentBridge"),
+            ] {
+                RegisterClassW(&WNDCLASSW {
+                    lpfnWndProc: Some(DefWindowProcW),
+                    hInstance: module,
+                    lpszClassName: name,
+                    ..std::mem::zeroed()
+                });
+            }
+            let taskbar = CreateWindowExW(
+                0,
+                w!("STATIC"),
+                w!(""),
+                0,
+                0,
+                0,
+                1000,
+                48,
+                null_mut(),
+                null_mut(),
+                module,
+                null(),
+            );
+            assert!(!taskbar.is_null());
+            let child = |name| {
+                CreateWindowExW(
+                    0,
+                    name,
+                    w!(""),
+                    WS_CHILD,
+                    0,
+                    0,
+                    0,
+                    0,
+                    taskbar,
+                    null_mut(),
+                    module,
+                    null(),
+                )
+            };
+            let rebar = child(w!("ReBarWindow32"));
+            assert!(!rebar.is_null());
+            assert_eq!(taskbar_parent(taskbar), rebar);
+
+            let bridge = child(w!("Windows.UI.Composition.DesktopWindowContentBridge"));
+            assert!(!bridge.is_null());
+            assert_eq!(taskbar_parent(taskbar), taskbar);
+
+            DestroyWindow(bridge);
+            assert_eq!(taskbar_parent(taskbar), rebar);
+            DestroyWindow(rebar);
+            assert_eq!(taskbar_parent(taskbar), taskbar);
+            DestroyWindow(taskbar);
+        }
+    }
 
     #[test]
     fn task_list_reservation_is_idempotent_and_restores_only_its_own_resize() {
