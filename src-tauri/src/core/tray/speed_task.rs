@@ -50,6 +50,13 @@ impl TraySpeedController {
         Ok(())
     }
 
+    #[cfg_attr(
+        target_os = "macos",
+        expect(
+            clippy::unnecessary_wraps,
+            reason = "Windows taskbar attachment requires a fallible shared API"
+        )
+    )]
     fn start_task(&self) -> Result<()> {
         if handle::Handle::global().is_exiting() {
             return Ok(());
