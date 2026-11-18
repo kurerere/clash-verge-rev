@@ -75,7 +75,13 @@ impl TraySpeedController {
         #[cfg(target_os = "windows")]
         {
             self.display.lock().take();
-            *self.display.lock() = Some(super::windows_speed::TaskbarSpeedDisplay::new()?);
+            *self.display.lock() = Some(super::windows_speed::TaskbarSpeedDisplay::new(|| {
+                AsyncHandler::spawn(|| async {
+                    if !crate::core::lightweight::exit_lightweight_mode().await {
+                        crate::utils::window_manager::WindowManager::show_main_window().await;
+                    }
+                });
+            })?);
         }
         #[cfg(target_os = "windows")]
         let display = Arc::clone(&self.display);

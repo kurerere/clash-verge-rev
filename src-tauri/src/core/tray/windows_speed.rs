@@ -1,4 +1,3 @@
-use crate::utils::speed::format_bytes_per_second;
 use anyhow::{Context as _, Result, bail};
 use parking_lot::Mutex;
 use std::ptr::{null, null_mut};
@@ -12,26 +11,29 @@ use std::time::Duration;
 use windows_sys::Win32::{
     Foundation::{ERROR_CLASS_ALREADY_EXISTS, GetLastError, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM},
     Graphics::Gdi::{
-        AC_SRC_ALPHA, AC_SRC_OVER, ANTIALIASED_QUALITY, BLENDFUNCTION, BeginPaint, CLIP_DEFAULT_PRECIS, CreateFontW,
-        CreateSolidBrush, DEFAULT_CHARSET, DEFAULT_PITCH, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER,
-        DeleteObject, DrawTextW, EndPaint, FF_DONTCARE, FW_NORMAL, FillRect, GdiFlush, GetDC, HDC, InvalidateRect,
-        MapWindowPoints, OUT_DEFAULT_PRECIS, PAINTSTRUCT, RGBQUAD, ReleaseDC, SelectObject, SetBkMode, SetTextColor,
-        TRANSPARENT,
+        AC_SRC_ALPHA, AC_SRC_OVER, ANTIALIASED_QUALITY, BLENDFUNCTION, BeginPaint, CreateFontIndirectW,
+        CreateSolidBrush, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, ETO_CLIPPED,
+        EndPaint, ExtTextOutW, FillRect, GdiFlush, GetDC, GetTextExtentPoint32W, GetTextFaceW, GetTextMetricsW, HDC,
+        HFONT, InvalidateRect, LOGFONTW, MapWindowPoints, PAINTSTRUCT, RGBQUAD, ReleaseDC, SelectObject, SetBkMode,
+        SetTextColor, TEXTMETRICW, TRANSPARENT,
     },
     System::LibraryLoader::GetModuleHandleW,
     UI::{
         Controls::{
             BPBF_TOPDOWNDIB, BeginBufferedPaint, BufferedPaintInit, BufferedPaintSetAlpha, BufferedPaintUnInit,
-            EndBufferedPaint, GetBufferedPaintBits,
+            EndBufferedPaint, GetBufferedPaintBits, ICC_WIN95_CLASSES, INITCOMMONCONTROLSEX, InitCommonControlsEx,
+            TOOLTIPS_CLASSW, TTF_IDISHWND, TTF_SUBCLASS, TTM_ADDTOOLW, TTM_SETMAXTIPWIDTH, TTM_UPDATETIPTEXTW,
+            TTS_ALWAYSTIP, TTS_NOPREFIX, TTTOOLINFOW,
         },
-        HiDpi::GetDpiForWindow,
+        HiDpi::{GetDpiForWindow, SystemParametersInfoForDpi},
         WindowsAndMessaging::{
-            CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, FindWindowExW, FindWindowW, GWL_EXSTYLE,
-            GetClientRect, GetWindowLongPtrW, GetWindowRect, GetWindowTextW, IsWindow, MA_NOACTIVATE, MSG, PM_REMOVE,
-            PeekMessageW, RegisterClassW, SW_HIDE, SWP_NOACTIVATE, SWP_NOZORDER, SWP_SHOWWINDOW, SetWindowPos,
-            SetWindowTextW, ShowWindow, TranslateMessage, ULW_ALPHA, UpdateLayeredWindow, WM_CREATE, WM_ERASEBKGND,
-            WM_MOUSEACTIVATE, WM_NCDESTROY, WM_PAINT, WNDCLASSW, WS_CHILD, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-            WS_EX_TOOLWINDOW,
+            CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, FindWindowExW,
+            FindWindowW, GWL_EXSTYLE, GWLP_USERDATA, GetClientRect, GetWindowLongPtrW, GetWindowRect, GetWindowTextW,
+            IDC_HAND, IsWindow, LoadCursorW, MA_NOACTIVATE, MSG, NONCLIENTMETRICSW, PM_REMOVE, PeekMessageW,
+            RegisterClassW, SPI_GETNONCLIENTMETRICS, SW_HIDE, SWP_NOACTIVATE, SWP_NOZORDER, SWP_SHOWWINDOW,
+            SendMessageW, SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow, TranslateMessage, ULW_ALPHA,
+            UpdateLayeredWindow, WM_CREATE, WM_ERASEBKGND, WM_LBUTTONUP, WM_MOUSEACTIVATE, WM_NCDESTROY, WM_PAINT,
+            WNDCLASSW, WS_CHILD, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
         },
     },
 };
@@ -49,12 +51,12 @@ pub(super) struct TaskbarSpeedDisplay {
 }
 
 impl TaskbarSpeedDisplay {
-    pub fn new() -> Result<Self> {
+    pub fn new(on_click: fn()) -> Result<Self> {
         let state = Arc::new(DisplayState::default());
         let shared = Arc::clone(&state);
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let thread = thread::Builder::new().name("taskbar-speed".into()).spawn(move || {
-            let mut window = match TaskbarWindow::new() {
+            let mut window = match TaskbarWindow::new(on_click) {
                 Ok(window) => window,
                 Err(error) => {
                     let _ = ready_tx.send(Err(error));
@@ -124,15 +126,19 @@ struct TaskbarWindow {
     parent: HWND,
     reservation: Option<Reservation>,
     text: String,
+    tooltip: HWND,
+    tooltip_text: Vec<u16>,
+    on_click: Box<fn()>,
 }
 
 impl TaskbarWindow {
-    fn new() -> Result<Self> {
+    fn new(on_click: fn()) -> Result<Self> {
         unsafe {
             let class = WNDCLASSW {
                 lpfnWndProc: Some(window_proc),
                 hInstance: GetModuleHandleW(null()),
                 lpszClassName: w!("ClashVergeTaskbarSpeed"),
+                hCursor: LoadCursorW(null_mut(), IDC_HAND),
                 ..std::mem::zeroed()
             };
             if RegisterClassW(&class) == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS {
@@ -147,6 +153,9 @@ impl TaskbarWindow {
             parent: null_mut(),
             reservation: None,
             text: String::new(),
+            tooltip: null_mut(),
+            tooltip_text: vec![0],
+            on_click: Box::new(on_click),
         };
         if let Err(error) = window.refresh((0, 0)) {
             bail!("Could not attach the speed display to the Windows taskbar: {error:#}");
@@ -177,12 +186,15 @@ impl TaskbarWindow {
                     parent,
                     null_mut(),
                     GetModuleHandleW(null()),
-                    null(),
+                    (&*self.on_click as *const fn()).cast(),
                 );
                 if self.window.is_null() {
                     return Err(std::io::Error::last_os_error()).context("CreateWindowExW failed");
                 }
                 self.text.clear();
+            }
+            if IsWindow(self.tooltip) == 0 {
+                self.create_tooltip()?;
             }
 
             let dpi = GetDpiForWindow(taskbar).max(96) as i32;
@@ -197,8 +209,9 @@ impl TaskbarWindow {
                     bounds.bottom
                 );
             }
-            let width = 72 * dpi / 96;
-            let height = (32 * dpi / 96).min(bounds.bottom);
+            let font = TaskbarFont::new(dpi as u32)?;
+            let width = font.width();
+            let height = (2 * font.line_height + 4 * dpi / 96).min(bounds.bottom);
             let area = if parent == taskbar {
                 let notify = FindWindowExW(taskbar, null_mut(), w!("TrayNotifyWnd"), null());
                 let notify =
@@ -228,15 +241,25 @@ impl TaskbarWindow {
             if !position(self.window, area, SWP_SHOWWINDOW | SWP_NOACTIVATE) {
                 return Err(std::io::Error::last_os_error()).context("SetWindowPos failed for the speed display");
             }
-            let text = format!(
-                "↑ {}\n↓ {}",
-                format_bytes_per_second(speed.0),
-                format_bytes_per_second(speed.1)
-            );
+            let text = format!("↑ {}\n↓ {}", format_taskbar_rate(speed.0), format_taskbar_rate(speed.1));
             if self.text != text {
                 let wide: Vec<u16> = text.encode_utf16().chain(Some(0)).collect();
                 SetWindowTextW(self.window, wide.as_ptr());
                 self.text = text;
+            }
+            let tooltip_text: Vec<u16> = format!("↑ {} B/s\n↓ {} B/s", speed.0, speed.1)
+                .encode_utf16()
+                .chain(Some(0))
+                .collect();
+            if self.tooltip_text != tooltip_text {
+                self.tooltip_text = tooltip_text;
+                let info = self.tooltip_info();
+                SendMessageW(
+                    self.tooltip,
+                    TTM_UPDATETIPTEXTW,
+                    0,
+                    (&info as *const TTTOOLINFOW) as LPARAM,
+                );
             }
             if parent == taskbar {
                 paint_layered(self.window)?;
@@ -245,6 +268,51 @@ impl TaskbarWindow {
             }
             Ok(())
         }
+    }
+
+    fn tooltip_info(&mut self) -> TTTOOLINFOW {
+        TTTOOLINFOW {
+            cbSize: size_of::<TTTOOLINFOW>() as u32,
+            uFlags: TTF_IDISHWND | TTF_SUBCLASS,
+            hwnd: self.window,
+            uId: self.window as usize,
+            lpszText: self.tooltip_text.as_mut_ptr(),
+            ..unsafe { std::mem::zeroed() }
+        }
+    }
+
+    fn create_tooltip(&mut self) -> Result<()> {
+        unsafe {
+            InitCommonControlsEx(&INITCOMMONCONTROLSEX {
+                dwSize: size_of::<INITCOMMONCONTROLSEX>() as u32,
+                dwICC: ICC_WIN95_CLASSES,
+            });
+            self.tooltip = CreateWindowExW(
+                WS_EX_TOPMOST | WS_EX_NOACTIVATE,
+                TOOLTIPS_CLASSW,
+                null(),
+                WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+                0,
+                0,
+                0,
+                0,
+                self.window,
+                null_mut(),
+                GetModuleHandleW(null()),
+                null(),
+            );
+            if self.tooltip.is_null() {
+                return Err(std::io::Error::last_os_error()).context("Could not create the speed tooltip");
+            }
+            SendMessageW(self.tooltip, TTM_SETMAXTIPWIDTH, 0, 400);
+            let info = self.tooltip_info();
+            if SendMessageW(self.tooltip, TTM_ADDTOOLW, 0, (&info as *const TTTOOLINFOW) as LPARAM) == 0 {
+                DestroyWindow(self.tooltip);
+                self.tooltip = null_mut();
+                bail!("Could not register the speed tooltip");
+            }
+        }
+        Ok(())
     }
 
     fn reserve(&mut self, list: HWND, bounds: RECT, width: i32, height: i32) -> Result<RECT> {
@@ -309,11 +377,15 @@ impl TaskbarWindow {
     fn detach(&mut self) {
         self.reservation.take();
         unsafe {
+            if IsWindow(self.tooltip) != 0 {
+                DestroyWindow(self.tooltip);
+            }
             if IsWindow(self.window) != 0 {
                 DestroyWindow(self.window);
             }
         }
         self.window = null_mut();
+        self.tooltip = null_mut();
         self.parent = null_mut();
     }
 }
@@ -373,6 +445,8 @@ unsafe extern "system" fn window_proc(window: HWND, message: u32, wparam: WPARAM
     unsafe {
         match message {
             WM_CREATE => {
+                let create = &*(lparam as *const CREATESTRUCTW);
+                SetWindowLongPtrW(window, GWLP_USERDATA, create.lpCreateParams as isize);
                 BufferedPaintInit();
                 0
             }
@@ -385,6 +459,13 @@ unsafe extern "system" fn window_proc(window: HWND, message: u32, wparam: WPARAM
                 0
             }
             WM_ERASEBKGND => 1,
+            WM_LBUTTONUP => {
+                let callback = GetWindowLongPtrW(window, GWLP_USERDATA) as *const fn();
+                if !callback.is_null() {
+                    (*callback)();
+                }
+                0
+            }
             WM_MOUSEACTIVATE => MA_NOACTIVATE as LRESULT,
             _ => DefWindowProcW(window, message, wparam, lparam),
         }
@@ -421,7 +502,11 @@ fn paint(window: HWND) {
             return;
         }
         let (background, foreground) = theme_colors();
-        draw_content(window, dc, bounds, background, foreground);
+        if draw_content(window, dc, bounds, background, foreground).is_err() {
+            EndBufferedPaint(buffer, 0);
+            EndPaint(window, &paint);
+            return;
+        }
         // GDI leaves alpha unset; glass taskbars otherwise blend dark text into their light background.
         BufferedPaintSetAlpha(buffer, null(), 255);
         EndBufferedPaint(buffer, 1);
@@ -447,7 +532,7 @@ fn paint_layered(window: HWND) -> Result<()> {
         }
         let result = (|| {
             // Grayscale glyph coverage avoids ClearType fringes on the transparent taskbar surface.
-            draw_content(window, dc, bounds, 0, 0x00ffffff);
+            draw_content(window, dc, bounds, 0, 0x00ffffff)?;
             GdiFlush();
             let mut bits = null_mut();
             let mut stride = 0;
@@ -485,6 +570,8 @@ fn paint_layered(window: HWND) -> Result<()> {
 }
 
 fn glyph_pixel(coverage: u8, foreground: u32) -> RGBQUAD {
+    // Alpha zero is click-through on layered windows; retain one level for the full hover/click target.
+    let coverage = coverage.max(1);
     let alpha = u32::from(coverage);
     RGBQUAD {
         rgbRed: ((foreground & 0xff) * alpha / 255) as u8,
@@ -494,49 +581,195 @@ fn glyph_pixel(coverage: u8, foreground: u32) -> RGBQUAD {
     }
 }
 
-fn draw_content(window: HWND, dc: HDC, bounds: RECT, background: u32, foreground: u32) {
+fn format_taskbar_rate(bytes: u64) -> String {
+    if bytes == 0 {
+        return "0K/s".into();
+    }
+    let units = ["B/s", "K/s", "M/s", "G/s"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value.round() >= 1000.0 && unit < units.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if value.round() >= 1000.0 {
+        return "999G/s+".into();
+    }
+    if value < 9.95 {
+        format!("{value:.1}{}", units[unit])
+    } else {
+        format!("{value:.0}{}", units[unit])
+    }
+}
+
+struct TaskbarFont {
+    handle: HFONT,
+    digit_width: i32,
+    decimal_width: i32,
+    arrow_width: i32,
+    unit_width: i32,
+    line_height: i32,
+    padding: i32,
+    gap: i32,
+}
+
+impl TaskbarFont {
+    fn new(dpi: u32) -> Result<Self> {
+        unsafe {
+            let mut metrics: NONCLIENTMETRICSW = std::mem::zeroed();
+            metrics.cbSize = size_of::<NONCLIENTMETRICSW>() as u32;
+            let mut logical: LOGFONTW = if SystemParametersInfoForDpi(
+                SPI_GETNONCLIENTMETRICS,
+                metrics.cbSize,
+                (&mut metrics as *mut NONCLIENTMETRICSW).cast(),
+                0,
+                dpi,
+            ) != 0
+            {
+                metrics.lfMessageFont
+            } else {
+                LOGFONTW {
+                    lfHeight: -(12 * dpi as i32 / 96),
+                    ..std::mem::zeroed()
+                }
+            };
+            logical.lfQuality = ANTIALIASED_QUALITY;
+            let dc = GetDC(null_mut());
+            if dc.is_null() {
+                bail!("Could not get a device context for taskbar typography");
+            }
+            let mut handle = null_mut();
+            for face in ["Segoe UI Variable", "Segoe UI"] {
+                logical.lfFaceName.fill(0);
+                for (slot, ch) in logical.lfFaceName.iter_mut().zip(face.encode_utf16()) {
+                    *slot = ch;
+                }
+                handle = CreateFontIndirectW(&logical);
+                if handle.is_null() {
+                    continue;
+                }
+                let old = SelectObject(dc, handle);
+                let mut selected = [0u16; 64];
+                let length = GetTextFaceW(dc, selected.len() as i32, selected.as_mut_ptr());
+                SelectObject(dc, old);
+                if face == "Segoe UI" || (length > 0 && String::from_utf16_lossy(&selected).starts_with(face)) {
+                    break;
+                }
+                DeleteObject(handle);
+                handle = null_mut();
+            }
+            if handle.is_null() {
+                ReleaseDC(null_mut(), dc);
+                bail!("Could not create the taskbar font");
+            }
+            let old = SelectObject(dc, handle);
+            let measure = |text: &str| -> i32 {
+                let wide: Vec<u16> = text.encode_utf16().collect();
+                let mut size: SIZE = std::mem::zeroed();
+                GetTextExtentPoint32W(dc, wide.as_ptr(), wide.len() as i32, &mut size);
+                size.cx
+            };
+            let mut text_metrics: TEXTMETRICW = std::mem::zeroed();
+            GetTextMetricsW(dc, &mut text_metrics);
+            let font = Self {
+                handle,
+                digit_width: (0..=9).map(|digit| measure(&digit.to_string())).max().unwrap_or(0),
+                decimal_width: measure("."),
+                arrow_width: measure("↑").max(measure("↓")),
+                unit_width: ["B/s", "K/s", "M/s", "G/s", "G/s+"]
+                    .into_iter()
+                    .map(measure)
+                    .max()
+                    .unwrap_or(0),
+                line_height: text_metrics.tmHeight,
+                padding: 3 * dpi as i32 / 96,
+                gap: 2 * dpi as i32 / 96,
+            };
+            SelectObject(dc, old);
+            ReleaseDC(null_mut(), dc);
+            if font.digit_width == 0 || font.line_height == 0 || font.unit_width == 0 {
+                bail!("Could not measure the taskbar font");
+            }
+            Ok(font)
+        }
+    }
+
+    const fn number_right(&self) -> i32 {
+        self.padding + self.arrow_width + self.gap + 3 * self.digit_width
+    }
+
+    const fn width(&self) -> i32 {
+        self.number_right() + self.unit_width + self.padding
+    }
+
+    fn advances(&self, number: &[u16]) -> Vec<i32> {
+        number
+            .iter()
+            .map(|ch| {
+                if *ch == u16::from(b'.') {
+                    self.decimal_width
+                } else {
+                    self.digit_width
+                }
+            })
+            .collect()
+    }
+}
+
+impl Drop for TaskbarFont {
+    fn drop(&mut self) {
+        unsafe {
+            DeleteObject(self.handle);
+        }
+    }
+}
+
+fn draw_content(window: HWND, dc: HDC, bounds: RECT, background: u32, foreground: u32) -> Result<()> {
     unsafe {
         let brush = CreateSolidBrush(background);
         FillRect(dc, &bounds, brush);
         DeleteObject(brush);
         SetBkMode(dc, TRANSPARENT as i32);
         SetTextColor(dc, foreground);
-        let dpi = GetDpiForWindow(window).max(96) as i32;
-        let font = CreateFontW(
-            -(12 * dpi / 96),
-            0,
-            0,
-            0,
-            FW_NORMAL as i32,
-            0,
-            0,
-            0,
-            DEFAULT_CHARSET as u32,
-            OUT_DEFAULT_PRECIS as u32,
-            CLIP_DEFAULT_PRECIS as u32,
-            ANTIALIASED_QUALITY as u32,
-            (DEFAULT_PITCH | FF_DONTCARE) as u32,
-            w!("Segoe UI"),
-        );
-        let old_font = SelectObject(dc, font);
+        let font = TaskbarFont::new(GetDpiForWindow(window).max(96))?;
+        let old_font = SelectObject(dc, font.handle);
         let mut text = [0u16; 128];
         let length = GetWindowTextW(window, text.as_mut_ptr(), text.len() as i32) as usize;
         let middle = bounds.bottom / 2;
-        let padding = 6 * dpi / 96;
-        let arrow_right = padding + 10 * dpi / 96;
-        let gap = 2 * dpi / 96;
         for (index, line) in text[..length].split(|ch| *ch == 10).take(2).enumerate() {
             if line.len() < 6 {
                 continue;
             }
-            // The shared formatter's units are all three characters (B/s, K/s, M/s, G/s, T/s).
-            let unit_start = line.len() - 3;
-            let mut rate = line[2..unit_start].to_vec();
-            rate.push(u16::from(b' '));
-            rate.extend_from_slice(&line[unit_start..]);
+            let Some(unit_start) = line
+                .iter()
+                .position(|ch| matches!(u8::try_from(*ch), Ok(b'B' | b'K' | b'M' | b'G')))
+            else {
+                continue;
+            };
+            let Some(number) = line.get(2..unit_start) else {
+                continue;
+            };
+            let advances = font.advances(number);
+            let number_right = font.number_right();
+            let number_bounds = RECT {
+                left: font.padding + font.arrow_width + font.gap,
+                right: number_right,
+                top: index as i32 * middle,
+                bottom: (index as i32 + 1) * middle,
+            };
+            ExtTextOutW(
+                dc,
+                number_right - advances.iter().sum::<i32>(),
+                number_bounds.top + (middle - font.line_height) / 2,
+                ETO_CLIPPED,
+                &number_bounds,
+                number.as_ptr(),
+                number.len() as u32,
+                advances.as_ptr(),
+            );
             for (part, left, right) in [
-                (&line[..1], padding, arrow_right),
-                (rate.as_slice(), arrow_right + gap, bounds.right - padding),
+                (&line[..1], font.padding, font.padding + font.arrow_width),
+                (&line[unit_start..], number_right, bounds.right - font.padding),
             ] {
                 let mut rect = RECT {
                     left,
@@ -554,8 +787,8 @@ fn draw_content(window: HWND, dc: HDC, bounds: RECT, background: u32, foreground
             }
         }
         SelectObject(dc, old_font);
-        DeleteObject(font);
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -564,16 +797,56 @@ mod tests {
     use super::*;
 
     #[test]
+    fn compact_rates_cover_idle_rounding_and_unit_boundaries() {
+        for (bytes, expected) in [
+            (0, "0K/s"),
+            (1, "1.0B/s"),
+            (10, "10B/s"),
+            (999, "999B/s"),
+            (1000, "1.0K/s"),
+            (85 * 1024, "85K/s"),
+            (512 * 1024, "512K/s"),
+            (1023898, "1.0M/s"),
+            (12897485, "12M/s"),
+            (u64::MAX, "999G/s+"),
+        ] {
+            assert_eq!(format_taskbar_rate(bytes), expected);
+        }
+    }
+
+    #[test]
+    fn tabular_rates_fit_the_measured_width_at_each_requested_dpi() {
+        for dpi in [96, 120, 144] {
+            let font = TaskbarFont::new(dpi).expect("system taskbar font");
+            assert_eq!(font.advances(&[49, 49, 49]), font.advances(&[56, 56, 56]));
+            for bytes in [0, 1, 999, 1000, 1023898, 12897485, 999 * 1024 * 1024 * 1024, u64::MAX] {
+                let rate = format_taskbar_rate(bytes);
+                let number: Vec<u16> = rate
+                    .chars()
+                    .take_while(|ch| ch.is_ascii_digit() || *ch == '.')
+                    .map(|ch| ch as u16)
+                    .collect();
+                assert!(
+                    font.advances(&number).iter().sum::<i32>() <= 3 * font.digit_width,
+                    "{rate} at {dpi}"
+                );
+            }
+            assert!(font.width() > font.number_right());
+        }
+    }
+
+    #[test]
     fn glyph_alpha_has_no_opaque_background_or_color_fringe() {
         for coverage in [0, 128, 255] {
             let light = glyph_pixel(coverage, 0x00181818);
             let dark = glyph_pixel(coverage, 0x00ffffff);
-            assert_eq!(light.rgbReserved, coverage);
-            assert_eq!(light.rgbRed, (24 * u32::from(coverage) / 255) as u8);
+            let alpha = coverage.max(1);
+            assert_eq!(light.rgbReserved, alpha);
+            assert_eq!(light.rgbRed, (24 * u32::from(alpha) / 255) as u8);
             assert_eq!((light.rgbRed, light.rgbRed), (light.rgbGreen, light.rgbBlue));
             assert_eq!(
                 (dark.rgbRed, dark.rgbGreen, dark.rgbBlue, dark.rgbReserved),
-                (coverage, coverage, coverage, coverage)
+                (alpha, alpha, alpha, alpha)
             );
         }
     }
@@ -728,6 +1001,9 @@ mod tests {
                     parent,
                     reservation: None,
                     text: String::new(),
+                    tooltip: null_mut(),
+                    tooltip_text: vec![0],
+                    on_click: Box::new(|| {}),
                 };
                 let area = display.reserve(list, bounds, 92, 32).expect("reserved area");
                 let reserved = rect_in(list, parent).expect("resized task list");
