@@ -384,8 +384,6 @@ pub fn run() -> std::process::ExitCode {
             });
         }
         tauri::RunEvent::Exit => {
-            #[cfg(any(target_os = "macos", target_os = "windows"))]
-            clash_verge_logging::logging_error!(Type::Tray, core::tray::Tray::global().update_speed_task(false));
             // Windows session ending currently reaches Tao as WM_ENDSESSION and
             // destroys the loop without a preventable ExitRequested event.
             if !handle::Handle::global().is_exiting() {

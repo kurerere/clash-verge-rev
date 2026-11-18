@@ -29,10 +29,8 @@ use tauri::{
 };
 
 mod menu_def;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(target_os = "macos")]
 mod speed_task;
-#[cfg(target_os = "windows")]
-mod windows_speed;
 use menu_def::{MenuIds, MenuTexts};
 
 // TODO: 是否需要将可变菜单抽离存储起来，后续直接更新对应菜单实例，无需重新创建菜单(待考虑)
@@ -59,7 +57,7 @@ enum IconKind {
 
 pub struct Tray {
     limiter: SystemLimiter,
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     speed_controller: speed_task::TraySpeedController,
 }
 
@@ -132,7 +130,7 @@ impl Default for Tray {
     fn default() -> Self {
         Self {
             limiter: Limiter::new(Duration::from_millis(TRAY_CLICK_DEBOUNCE_MS), SystemClock),
-            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            #[cfg(target_os = "macos")]
             speed_controller: speed_task::TraySpeedController::new(),
         }
     }
@@ -349,11 +347,8 @@ impl Tray {
             logging_error!(Type::Tray, Self::global().update_menu().await);
         });
         self.update_icon(&verge).await?;
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        logging_error!(
-            Type::Tray,
-            self.update_speed_task(verge.enable_tray_speed.unwrap_or(false))
-        );
+        #[cfg(target_os = "macos")]
+        self.update_speed_task(verge.enable_tray_speed.unwrap_or(false));
         self.update_tooltip().await?;
         Ok(())
     }
@@ -412,9 +407,9 @@ impl Tray {
         allow
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    pub fn update_speed_task(&self, enable_tray_speed: bool) -> Result<()> {
-        self.speed_controller.update_task(enable_tray_speed)
+    #[cfg(target_os = "macos")]
+    pub fn update_speed_task(&self, enable_tray_speed: bool) {
+        self.speed_controller.update_task(enable_tray_speed);
     }
 }
 
