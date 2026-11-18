@@ -118,7 +118,7 @@ verge_registry! {
     webdav_url => NoEffect;
     webdav_username => NoEffect;
     webdav_password => NoEffect;
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     enable_tray_speed => [TrayIcon];
     tray_proxy_groups_display_mode => [TrayMenu];
     tray_inline_outbound_modes => [TrayMenu];

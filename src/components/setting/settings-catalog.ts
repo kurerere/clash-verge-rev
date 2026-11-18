@@ -460,7 +460,7 @@ const settingsCatalog: readonly SettingEntry[] = [
     },
     'settings.components.verge.layout.fields.enableTraySpeed': {
       aliases: 'enableTraySpeed',
-      platforms: ['macos', 'windows'],
+      platforms: ['macos'],
     },
     'settings.components.verge.layout.fields.proxyGroupsDisplayMode':
       'proxyGroupsDisplayMode',
