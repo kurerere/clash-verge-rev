@@ -13,7 +13,7 @@ use windows_sys::Win32::{
     Foundation::{ERROR_CLASS_ALREADY_EXISTS, GetLastError, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM},
     Graphics::Gdi::{
         AC_SRC_ALPHA, AC_SRC_OVER, ANTIALIASED_QUALITY, BLENDFUNCTION, BeginPaint, CLIP_DEFAULT_PRECIS, CreateFontW,
-        CreateSolidBrush, DEFAULT_CHARSET, DEFAULT_PITCH, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE, DT_VCENTER,
+        CreateSolidBrush, DEFAULT_CHARSET, DEFAULT_PITCH, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER,
         DeleteObject, DrawTextW, EndPaint, FF_DONTCARE, FW_NORMAL, FillRect, GdiFlush, GetDC, HDC, InvalidateRect,
         MapWindowPoints, OUT_DEFAULT_PRECIS, PAINTSTRUCT, RGBQUAD, ReleaseDC, SelectObject, SetBkMode, SetTextColor,
         TRANSPARENT,
@@ -197,7 +197,7 @@ impl TaskbarWindow {
                     bounds.bottom
                 );
             }
-            let width = 92 * dpi / 96;
+            let width = 72 * dpi / 96;
             let height = (32 * dpi / 96).min(bounds.bottom);
             let area = if parent == taskbar {
                 let notify = FindWindowExW(taskbar, null_mut(), w!("TrayNotifyWnd"), null());
@@ -523,19 +523,20 @@ fn draw_content(window: HWND, dc: HDC, bounds: RECT, background: u32, foreground
         let length = GetWindowTextW(window, text.as_mut_ptr(), text.len() as i32) as usize;
         let middle = bounds.bottom / 2;
         let padding = 6 * dpi / 96;
-        let arrow_right = padding + 12 * dpi / 96;
-        let unit_left = bounds.right - padding - 24 * dpi / 96;
-        let gap = 4 * dpi / 96;
+        let arrow_right = padding + 10 * dpi / 96;
+        let gap = 2 * dpi / 96;
         for (index, line) in text[..length].split(|ch| *ch == 10).take(2).enumerate() {
-            if line.len() < 4 {
+            if line.len() < 6 {
                 continue;
             }
             // The shared formatter's units are all three characters (B/s, K/s, M/s, G/s, T/s).
             let unit_start = line.len() - 3;
-            for (part, left, right, align) in [
-                (&line[..1], padding, arrow_right, DT_LEFT),
-                (&line[1..unit_start], arrow_right + gap, unit_left - gap, DT_RIGHT),
-                (&line[unit_start..], unit_left, bounds.right - padding, DT_LEFT),
+            let mut rate = line[2..unit_start].to_vec();
+            rate.push(u16::from(b' '));
+            rate.extend_from_slice(&line[unit_start..]);
+            for (part, left, right) in [
+                (&line[..1], padding, arrow_right),
+                (rate.as_slice(), arrow_right + gap, bounds.right - padding),
             ] {
                 let mut rect = RECT {
                     left,
@@ -548,7 +549,7 @@ fn draw_content(window: HWND, dc: HDC, bounds: RECT, background: u32, foreground
                     part.as_ptr(),
                     part.len() as i32,
                     &mut rect,
-                    align | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
+                    DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
                 );
             }
         }
