@@ -69,11 +69,14 @@ export interface TranslationResources {
             refreshDelay: string
           }
           labels: {
+            defaultRoute: string
             directMode: string
             globalMode: string
             group: string
             noActiveNode: string
             proxy: string
+            ruleCount: string
+            ruleTarget: string
           }
           status: {
             error: string
@@ -1130,6 +1133,7 @@ export interface TranslationResources {
             autoDelayDetection: string
             autoDelayDetectionInterval: string
             autoLogClean: string
+            autoSwitchSelectorGroup: string
             defaultLatencyTest: string
             defaultLatencyTimeout: string
             enableBuiltinEnhanced: string
@@ -1148,6 +1152,7 @@ export interface TranslationResources {
           tooltips: {
             autoCloseConnections: string
             autoDelayDetection: string
+            autoSwitchSelectorGroup: string
             defaultLatencyTest: string
             enableBuiltinEnhanced: string
           }
